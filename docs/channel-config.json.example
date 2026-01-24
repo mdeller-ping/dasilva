@@ -1,0 +1,9 @@
+{
+  "channels": {
+    "YOUR_SLACK_CHANNEL_ID": {
+      "name": "engineering",
+      "docsFolder": "engineering",
+      "instructionsFile": "_instructions.md"
+    }
+  }
+}

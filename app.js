@@ -40,7 +40,7 @@ const openai = new OpenAI({
 
 // Load channel configurations and documentation
 const channelConfig = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'channel-config.json'), 'utf-8')
+  fs.readFileSync(path.join(__dirname, 'docs', 'channel-config.json'), 'utf-8')
 );
 
 // This will be populated asynchronously

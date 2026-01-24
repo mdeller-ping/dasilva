@@ -1,0 +1,9 @@
+{
+  "channels": {
+    "C0AB1P97UBB": {
+      "name": "pingone-protect-internal",
+      "docsFolder": "pingone-protect-internal",
+      "instructionsFile": "_instructions.md"
+    }
+  }
+}

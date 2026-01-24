@@ -1,37 +1,46 @@
 # Dasilva - AI-Powered Slack Bot
 
-A channel-specific AI assistant for Slack that responds to questions based on custom documentation.
+A channel-specific AI assistant for Slack that responds to questions based on custom documentation using local semantic search.
 
 ## Overview
 
 Dasilva is a Slack bot that monitors configured channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
 
-1. **@mentions** - Public responses when explicitly tagged
-2. **Ambient listening** - Private ephemeral responses to questions in monitored channels
+1. **@mentions** - Public threaded responses when explicitly tagged (always responds)
+2. **Ambient listening** - Private ephemeral responses to questions in monitored channels (smart filtering)
 
 ## Current Features (MVP)
 
 ### Core Functionality
-- ✅ Channel-specific documentation loading from Markdown files
-- ✅ AI responses powered by OpenAI (gpt-5-nano)
-- ✅ Two interaction modes: @mentions (public) and ambient (private)
-- ✅ Smart question detection - only responds to actual questions
-- ✅ Per-user rate limiting to prevent spam
+- ✅ **Local semantic search** using `@xenova/transformers` embeddings
+- ✅ Channel-specific documentation from Markdown files
+- ✅ AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
+- ✅ Two interaction modes: @mentions (public) and ambient (private ephemeral)
+- ✅ Smart question detection - only ambient mode responds to actual questions
+- ✅ Per-user rate limiting to prevent spam (ambient mode only)
 - ✅ Ephemeral messages for ambient responses (only visible to questioner)
 - ✅ Public threaded replies for @mentions
-- ✅ Configurable token limits and cooldown periods
+- ✅ **Slack formatting support** - proper code blocks, inline code, bold text
+- ✅ Configurable token limits, chunking, and cooldown periods
 - ✅ Debug mode for verbose logging
+- ✅ Token usage tracking in logs
 
-### Smart Filtering
+### Smart Filtering (Ambient Mode Only)
 - Only responds to messages that look like questions (ends with `?`, starts with question words, contains help keywords)
 - Rate limits responses per user (default: 5 minutes cooldown)
-- @mentions bypass rate limiting and filtering
+- @mentions bypass ALL filtering and cooldowns
 
 ### Documentation Management
-- Loads all `.md` files from channel-specific folders at startup
-- Documentation cached in memory for fast responses
-- Channel-specific system prompts and instructions
+- **Instructions file** (`_instructions.md`) - Always included with every request
+- **Content files** (all other `.md` files) - Chunked and semantically searched
+- Documentation loaded and embedded at startup
+- Semantic search finds relevant chunks based on question meaning
 - Easy to update - just edit markdown files and restart
+
+### Anti-Hallucination
+- Instructions guide the model to be helpful but accurate
+- Won't invent features or capabilities not in documentation
+- Proper Slack formatting for technical content
 
 ## Project Structure
 
@@ -39,15 +48,17 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 dasilva/
 ├── app.js                      # Main application
 ├── package.json                # Dependencies
-├── .env.local                  # Environment variables (not committed)
+├── channel-config.json         # Channel configurations (gitignored)
+├── channel-config.json.example # Template for channel config
+├── .env.local                  # Environment variables (gitignored)
 ├── .env.local.example          # Template for environment variables
 ├── .gitignore                  # Git ignore rules
+├── README.md                   # This file
 └── docs/
-    ├── channel-config.json     # Channel configurations
-    ├── product-team/           # Documentation for product channel
-    │   └── *.md
-    └── engineering/            # Documentation for engineering channel
-        └── *.md
+    ├── .gitkeep                # Preserves docs folder in git
+    └── your-channel/           # Your channel-specific docs (gitignored)
+        ├── _instructions.md    # Always-included instructions
+        └── *.md                # Content files (chunked & searched)
 ```
 
 ## Setup
@@ -56,7 +67,7 @@ dasilva/
 - Node.js (v18+)
 - npm
 - Slack workspace with admin access
-- OpenAI API key
+- OpenAI API key with access to gpt-5-mini or gpt-5-nano
 
 ### Installation
 
@@ -82,8 +93,21 @@ PORT=3000
 SLACK_BOT_TOKEN=xoxb-your-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
 OPENAI_API_KEY=sk-your-openai-key-here
-MAX_COMPLETION_TOKENS=1000
+
+# Model configuration
+MODEL=gpt-5-mini
+
+# Reasoning models need more tokens (they use tokens for internal thinking)
+MAX_COMPLETION_TOKENS=4000
+
+# Rate limiting
 RESPONSE_COOLDOWN_SECONDS=300
+
+# Document chunking
+CHUNK_SIZE=2000
+MAX_CHUNKS=5
+
+# Debug logging
 DEBUG_MODE=false
 ```
 
@@ -96,8 +120,6 @@ DEBUG_MODE=false
    - `chat:write`
    - `channels:read`
    - `channels:history`
-   - `im:write`
-   - `users:read`
 
 3. Install the app to your workspace and copy the Bot User OAuth Token
 
@@ -115,23 +137,51 @@ DEBUG_MODE=false
 1. Get your Slack channel IDs:
    - Right-click channel → "View channel details" → Copy Channel ID
 
-2. Edit `docs/channel-config.json`:
+2. Create `channel-config.json` from the example:
+```bash
+cp channel-config.json.example channel-config.json
+```
+
+3. Edit `channel-config.json`:
 ```json
 {
   "channels": {
     "C01234ABCD": {
       "name": "product-team",
       "docsFolder": "product-team",
-      "systemPrompt": "You are a product assistant..."
+      "instructionsFile": "_instructions.md"
     }
   }
 }
 ```
 
-3. Add documentation:
-   - Create folder: `docs/product-team/`
-   - Add markdown files: `overview.md`, `features.md`, etc.
-   - Bot loads all `.md` files automatically
+4. Create your documentation folder:
+```bash
+mkdir -p docs/product-team
+```
+
+5. Create your instructions file `docs/product-team/_instructions.md`:
+```markdown
+# Product Team Assistant
+
+You are a helpful expert on our product. Answer questions clearly based on the information provided.
+
+## Response Formatting for Slack
+
+Use Slack's formatting syntax:
+- Code blocks for JSON/code with ```language
+- Inline code for technical terms with `backticks`
+- Bold for emphasis with *asterisks*
+
+## Guidelines
+
+Be direct and helpful. Don't fabricate information not in the docs.
+```
+
+6. Add your content files:
+   - Create `.md` files: `docs/product-team/overview.md`, `features.md`, etc.
+   - All `.md` files except `_instructions.md` will be chunked and semantically searched
+   - `_instructions.md` is always included with every request
 
 ### Running the Bot
 
@@ -167,9 +217,12 @@ Bot: Responds with ephemeral message (only visible to the user who asked)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 3000 | Server port |
-| `MAX_COMPLETION_TOKENS` | 1000 | Max response length from AI |
-| `RESPONSE_COOLDOWN_SECONDS` | 300 | Cooldown between responses to same user (5 min) |
-| `DEBUG_MODE` | false | Enable verbose logging |
+| `MODEL` | gpt-5-mini | OpenAI model (gpt-5-mini or gpt-5-nano) |
+| `MAX_COMPLETION_TOKENS` | 4000 | Max tokens for response (reasoning models need 4000+) |
+| `RESPONSE_COOLDOWN_SECONDS` | 300 | Cooldown between ambient responses to same user (5 min) |
+| `CHUNK_SIZE` | 2000 | Characters per documentation chunk |
+| `MAX_CHUNKS` | 5 | Number of chunks to include in context |
+| `DEBUG_MODE` | false | Enable verbose logging including token counts |
 
 ## Known Limitations (MVP)
 
@@ -177,9 +230,10 @@ Bot: Responds with ephemeral message (only visible to the user who asked)
 - ❌ **No thread context** - Cannot reference "the previous message"
 - ❌ **In-memory rate limiting** - Resets on restart
 - ❌ **Single-instance only** - No distributed deployment support
-- ❌ **No authentication** - Trusts all Slack requests
+- ❌ **No request verification** - Trusts all Slack requests (security risk)
 - ❌ **No message editing** - Cannot update responses
 - ❌ **No analytics** - No tracking of usage or performance
+- ⚠️ **Startup time** - 30-60 seconds to load embedding model and process docs
 
 ## Production TODOs
 
@@ -244,15 +298,32 @@ Ensure all variables from `.env.local` are set in your hosting platform's enviro
 2. Verify channel ID in `channel-config.json`
 3. Check logs for errors: `DEBUG_MODE=true`
 4. Verify Slack Event Subscriptions URL is correct
+5. Check that docs folder exists and matches config
 
-### Empty responses
-- Check OpenAI API key is valid
-- Verify network connectivity
-- Check token limits aren't too low
-- Enable debug mode to see API responses
+### Empty responses from reasoning models
+- **Increase `MAX_COMPLETION_TOKENS`** - Reasoning models (gpt-5-mini/nano) use tokens for thinking
+- Set to at least 4000 tokens to allow room for reasoning + output
+- Check debug logs for `"reasoning_tokens"` usage
+- If `"content": ""` and `"finish_reason": "length"`, increase token limit
+
+### Bot responds twice to @mentions
+- Fixed in current version - bot now skips duplicate message events
+- If still happening, check Event Subscriptions aren't duplicated
+
+### Poor quality responses
+- Try increasing `MAX_CHUNKS` to include more context (e.g., 10)
+- Increase `CHUNK_SIZE` for larger context per chunk (e.g., 3000)
+- Check that `_instructions.md` has clear guidelines
+- Verify documentation is well-organized and clear
+
+### Startup is slow
+- Normal: 30-60 seconds to download embedding model and process docs
+- Model is cached after first run
+- Consider reducing doc size or number of chunks if too slow
 
 ### Rate limiting issues
 - Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env.local`
+- Remember: rate limiting only applies to ambient mode, not @mentions
 - Check rate limit map isn't growing unbounded (add cleanup for production)
 
 ## Contributing
@@ -265,11 +336,12 @@ Ensure all variables from `.env.local` are set in your hosting platform's enviro
 
 ## License
 
-[Your License Here]
+[Undecided, but currently Rights Reserved]
 
 ## Credits
 
 Built with:
 - [Slack Web API](https://slack.dev/node-slack-sdk/)
 - [OpenAI API](https://platform.openai.com/)
+- [Transformers.js](https://huggingface.co/docs/transformers.js) - Local embeddings
 - [Express](https://expressjs.com/)

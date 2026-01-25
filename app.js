@@ -304,7 +304,7 @@ I monitor specific channels and help answer questions.
 
 *Admin Commands:*
 • \`/dasilva addchannel\` - Add current channel to configuration
-• \`/dasilva editchannel <channel_id>\` - Edit existing channel
+• \`/dasilva editchannel\` - Edit current channel configuration
 • \`/dasilva deletechannel\` - Remove current channel from configuration
 • \`/dasilva listchannels\` - List all configured channels`;
       }
@@ -391,33 +391,30 @@ I monitor specific channels and help answer questions.
           }
         }
       }
-    } else if (args.startsWith('editchannel')) {
+    } else if (args === 'editchannel') {
       // Admin-only command
       if (!isAdmin(user_id)) {
         responseText = '❌ You must be an admin to configure channels.';
       } else {
-        const channelIdMatch = args.match(/^editchannel\s+([A-Z0-9]+)$/i);
-        if (!channelIdMatch) {
-          responseText = '❌ Invalid format. Use: `/dasilva editchannel C0AB1P97UBB`';
-        } else {
-          const channelId = channelIdMatch[1].toUpperCase();
-          const config = channelConfigModule.getChannel(channelId);
-          if (!config) {
-            responseText = `❌ Channel ${channelId} is not configured.`;
-          } else {
-            // Respond immediately to avoid timeout, then open modal asynchronously
-            clearTimeout(safetyTimeout);
-            res.json({
-              response_type: 'ephemeral',
-              text: 'Opening configuration modal...'
-            });
+        // Use the current channel context
+        const channelId = req.body.channel_id;
+        const config = channelConfigModule.getChannel(channelId);
 
-            // Open modal asynchronously (don't await here)
-            openEditChannelModal(trigger_id, channelId, config).catch(error => {
-              console.error('Error opening edit channel modal:', error);
-            });
-            return;
-          }
+        if (!config) {
+          responseText = `❌ This channel is not configured. Use \`/dasilva addchannel\` to add it.`;
+        } else {
+          // Respond immediately to avoid timeout, then open modal asynchronously
+          clearTimeout(safetyTimeout);
+          res.json({
+            response_type: 'ephemeral',
+            text: 'Opening configuration modal...'
+          });
+
+          // Open modal asynchronously (don't await here)
+          openEditChannelModal(trigger_id, channelId, config).catch(error => {
+            console.error('Error opening edit channel modal:', error);
+          });
+          return;
         }
       }
     } else if (args === 'deletechannel') {

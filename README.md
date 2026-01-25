@@ -9,6 +9,24 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 1. **@mentions** - Public threaded responses when explicitly tagged (always responds)
 2. **Ambient listening** - Private ephemeral responses to questions in monitored channels (smart filtering)
 
+## Technologies
+
+**Runtime & Server**
+- Node.js (v18+)
+- Express.js (v5.2.1) - Web framework for HTTP endpoints
+
+**AI & ML**
+- OpenAI API (@openai v6.16.0) - gpt-5-mini or gpt-5-nano models
+- Xenova/transformers (v2.17.1) - Local semantic embeddings (Hugging Face Transformers.js)
+
+**Slack Integration**
+- @slack/web-api (v7.13.0) - Slack API client for posting messages, reading channels
+
+**Development Tools**
+- dotenv (v16.4.5) - Environment variable management
+- ESLint (v9.39.2) - Code linting and quality
+- Nodemon (v3.1.9) - Development hot-reload
+
 ## Current Features (MVP)
 
 ### Core Functionality
@@ -42,24 +60,52 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 - Won't invent features or capabilities not in documentation
 - Proper Slack formatting for technical content
 
+## Current Implementation Status
+
+This bot is currently deployed and actively serving **two channels**:
+
+1. **Engineering Channel** - 109 lines of documentation
+   - Code review and testing best practices
+   - Git workflow and database migration standards
+   - Security practices and documentation requirements
+
+2. **PingOne Protect Internal Channel** - 1,959 lines of documentation
+   - PingOne Protect fraud prevention service overview
+   - Risk predictors and evaluation mechanics
+   - Default risk policy and integration mechanisms
+
+**Recent Updates** (from git history):
+- ✅ Added ESLint for code quality and consistency
+- ✅ Implemented chunk-based architecture with improved output formatting
+- ✅ Enhanced logging and token usage tracking
+- ✅ Refined question detection and rate limiting
+
 ## Project Structure
 
 ```
 dasilva/
-├── app.js                      # Main application
-├── package.json                # Dependencies
-├── channel-config.json         # Channel configurations (gitignored)
-├── channel-config.json.example # Template for channel config
-├── .env.local                  # Environment variables (gitignored)
-├── .env.local.example          # Template for environment variables
-├── .gitignore                  # Git ignore rules
-├── README.md                   # This file
+├── app.js                           # Main application (467 lines)
+├── package.json                     # Dependencies and scripts
+├── package-lock.json                # Locked dependency versions
+├── .env                            # Environment variables (gitignored, contains API keys)
+├── .env.example                    # Template for environment configuration
+├── .gitignore                      # Git ignore rules
+├── eslint.config.js                # ESLint configuration
+├── README.md                       # This file
 └── docs/
-    ├── .gitkeep                # Preserves docs folder in git
-    └── your-channel/           # Your channel-specific docs (gitignored)
-        ├── _instructions.md    # Always-included instructions
-        └── *.md                # Content files (chunked & searched)
+    ├── channel-config.json         # Channel-to-documentation mapping (gitignored)
+    ├── channel-config.json.example # Configuration template
+    ├── engineering/                # Engineering team documentation
+    │   ├── _instructions.md        # Always-included system instructions
+    │   ├── Engineering - Best Practices.md
+    │   └── Engineering - LLM Overides.md
+    └── pingone-protect-internal/   # PingOne Protect team documentation
+        ├── _instructions.md        # Always-included system instructions
+        ├── PingOne Protect - Best Practices (Internal).md
+        └── PingOne Protect - LLM Overides.md
 ```
+
+**Current Documentation**: 2,068 lines across 6 markdown files for 2 channels
 
 ## Setup
 
@@ -82,12 +128,12 @@ cd dasilva
 npm install
 ```
 
-3. Create `.env.local` from the example:
+3. Create `.env` from the example:
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env
 ```
 
-4. Configure environment variables in `.env.local`:
+4. Configure environment variables in `.env`:
 ```bash
 PORT=3000
 SLACK_BOT_TOKEN=xoxb-your-token-here
@@ -137,12 +183,12 @@ DEBUG_MODE=false
 1. Get your Slack channel IDs:
    - Right-click channel → "View channel details" → Copy Channel ID
 
-2. Create `channel-config.json` from the example:
+2. Create `docs/channel-config.json` from the example:
 ```bash
-cp channel-config.json.example channel-config.json
+cp docs/channel-config.json.example docs/channel-config.json
 ```
 
-3. Edit `channel-config.json`:
+3. Edit `docs/channel-config.json`:
 ```json
 {
   "channels": {
@@ -224,6 +270,20 @@ Bot: Responds with ephemeral message (only visible to the user who asked)
 | `MAX_CHUNKS` | 5 | Number of chunks to include in context |
 | `DEBUG_MODE` | false | Enable verbose logging including token counts |
 
+## Performance Characteristics
+
+**Startup Behavior**
+- Initial load: 30-60 seconds to download embedding model and process documentation
+- Model caching: Embedding model is cached locally after first download
+- Documentation processing: Chunks are generated at startup and cached in memory
+- Memory usage: Proportional to documentation size and number of chunks
+
+**Runtime Performance**
+- Semantic search: Local embedding computation (no external API calls)
+- Response time: Dependent on OpenAI API latency (typically 2-5 seconds)
+- Concurrent requests: Single-threaded Node.js handles multiple channels simultaneously
+- Rate limiting: In-memory per-user, per-channel tracking (resets on restart)
+
 ## Known Limitations (MVP)
 
 - ❌ **No conversation memory** - Bot only sees the current message, not chat history
@@ -283,7 +343,7 @@ Bot: Responds with ephemeral message (only visible to the user who asked)
 - **AWS ECS/Fargate** - For enterprise scale
 
 ### Environment Variables in Production
-Ensure all variables from `.env.local` are set in your hosting platform's environment configuration.
+Ensure all variables from `.env` are set in your hosting platform's environment configuration.
 
 ### Monitoring Recommendations
 - Set up uptime monitoring (UptimeRobot, Pingdom)
@@ -295,7 +355,7 @@ Ensure all variables from `.env.local` are set in your hosting platform's enviro
 
 ### Bot doesn't respond
 1. Check bot is invited to the channel: `/invite @dasilva`
-2. Verify channel ID in `channel-config.json`
+2. Verify channel ID in `docs/channel-config.json`
 3. Check logs for errors: `DEBUG_MODE=true`
 4. Verify Slack Event Subscriptions URL is correct
 5. Check that docs folder exists and matches config
@@ -322,7 +382,7 @@ Ensure all variables from `.env.local` are set in your hosting platform's enviro
 - Consider reducing doc size or number of chunks if too slow
 
 ### Rate limiting issues
-- Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env.local`
+- Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env`
 - Remember: rate limiting only applies to ambient mode, not @mentions
 - Check rate limit map isn't growing unbounded (add cleanup for production)
 

@@ -4,6 +4,8 @@
   "description": "product champion",
   "main": "app.js",
   "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
     "start": "node app.js",
     "dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -13,6 +15,7 @@
     "@slack/web-api": "^7.13.0",
     "@xenova/transformers": "^2.17.1",
     "dotenv": "^16.4.5",
+    "eslint": "^9.39.2",
     "express": "^5.2.1",
     "openai": "^6.16.0"
   },

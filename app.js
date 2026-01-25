@@ -39,6 +39,7 @@ const lastResponseTimes = new Map(); // key: "channelId:userId", value: timestam
 
 // Embedder will be initialized asynchronously
 let embedder = null;
+let isInitialized = false;
 
 // Initialize clients
 const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -125,6 +126,7 @@ async function initializeDocumentation() {
   }
 
   console.log('Documentation loading complete!');
+  isInitialized = true;
 }
 
 // Helper: Split text into chunks
@@ -233,12 +235,33 @@ app.get('/', (req, res) => {
 
 // Slack slash command endpoint
 app.post('/slack/commands', async (req, res) => {
+  // Set a safety timeout to respond within 2.5 seconds no matter what
+  const safetyTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.warn('Slash command took too long - sending fallback response');
+      res.json({
+        response_type: 'ephemeral',
+        text: '⏳ Request is taking longer than expected. Please try again.'
+      });
+    }
+  }, 2500);
+
   try {
-    const { command, text, user_id } = req.body;
+    const { command, text, user_id, trigger_id } = req.body;
 
     // Verify it's our command
     if (command !== '/dasilva') {
+      clearTimeout(safetyTimeout);
       return res.status(404).send('Unknown command');
+    }
+
+    // Check if bot is ready (within first 100ms to ensure fast response)
+    if (!isInitialized) {
+      clearTimeout(safetyTimeout);
+      return res.json({
+        response_type: 'ephemeral',
+        text: '⏳ Bot is still initializing. Please wait a moment and try again.'
+      });
     }
 
     // Parse the subcommand
@@ -314,13 +337,18 @@ I monitor specific channels and help answer questions.
       if (!isAdmin(user_id)) {
         responseText = '❌ You must be an admin to configure channels.';
       } else {
-        try {
-          await openAddChannelModal(req.body.trigger_id);
-          return res.send(); // Empty response - modal handles the interaction
-        } catch (error) {
+        // Respond immediately to avoid timeout, then open modal asynchronously
+        clearTimeout(safetyTimeout);
+        res.json({
+          response_type: 'ephemeral',
+          text: 'Opening configuration modal...'
+        });
+
+        // Open modal asynchronously (don't await here)
+        openAddChannelModal(trigger_id).catch(error => {
           console.error('Error opening add channel modal:', error);
-          responseText = '❌ Failed to open configuration modal. Please try again.';
-        }
+        });
+        return;
       }
     } else if (args.startsWith('editchannel')) {
       // Admin-only command
@@ -336,13 +364,18 @@ I monitor specific channels and help answer questions.
           if (!config) {
             responseText = `❌ Channel ${channelId} is not configured.`;
           } else {
-            try {
-              await openEditChannelModal(req.body.trigger_id, channelId, config);
-              return res.send(); // Empty response - modal handles the interaction
-            } catch (error) {
+            // Respond immediately to avoid timeout, then open modal asynchronously
+            clearTimeout(safetyTimeout);
+            res.json({
+              response_type: 'ephemeral',
+              text: 'Opening configuration modal...'
+            });
+
+            // Open modal asynchronously (don't await here)
+            openEditChannelModal(trigger_id, channelId, config).catch(error => {
               console.error('Error opening edit channel modal:', error);
-              responseText = '❌ Failed to open configuration modal. Please try again.';
-            }
+            });
+            return;
           }
         }
       }
@@ -360,13 +393,18 @@ I monitor specific channels and help answer questions.
           if (!config) {
             responseText = `❌ Channel ${channelId} is not configured.`;
           } else {
-            try {
-              await openDeleteConfirmationModal(req.body.trigger_id, channelId, config);
-              return res.send(); // Empty response - modal handles the interaction
-            } catch (error) {
+            // Respond immediately to avoid timeout, then open modal asynchronously
+            clearTimeout(safetyTimeout);
+            res.json({
+              response_type: 'ephemeral',
+              text: 'Opening confirmation modal...'
+            });
+
+            // Open modal asynchronously (don't await here)
+            openDeleteConfirmationModal(trigger_id, channelId, config).catch(error => {
               console.error('Error opening delete confirmation modal:', error);
-              responseText = '❌ Failed to open confirmation modal. Please try again.';
-            }
+            });
+            return;
           }
         }
       }
@@ -390,6 +428,7 @@ I monitor specific channels and help answer questions.
     }
 
     // Respond ephemerally (only visible to the user)
+    clearTimeout(safetyTimeout);
     res.json({
       response_type: 'ephemeral',
       text: responseText
@@ -397,10 +436,13 @@ I monitor specific channels and help answer questions.
 
   } catch (error) {
     console.error('Error handling slash command:', error);
-    res.json({
-      response_type: 'ephemeral',
-      text: '❌ Sorry, there was an error processing your command. Please try again.'
-    });
+    clearTimeout(safetyTimeout);
+    if (!res.headersSent) {
+      res.json({
+        response_type: 'ephemeral',
+        text: '❌ Sorry, there was an error processing your command. Please try again.'
+      });
+    }
   }
 });
 

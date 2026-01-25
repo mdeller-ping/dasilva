@@ -303,9 +303,9 @@ I monitor specific channels and help answer questions.
         responseText += `
 
 *Admin Commands:*
-• \`/dasilva addchannel\` - Add new channel configuration
+• \`/dasilva addchannel\` - Add current channel to configuration
 • \`/dasilva editchannel <channel_id>\` - Edit existing channel
-• \`/dasilva deletechannel <channel_id>\` - Remove channel configuration
+• \`/dasilva deletechannel\` - Remove current channel from configuration
 • \`/dasilva listchannels\` - List all configured channels`;
       }
     } else if (args === 'silence') {
@@ -337,18 +337,59 @@ I monitor specific channels and help answer questions.
       if (!isAdmin(user_id)) {
         responseText = '❌ You must be an admin to configure channels.';
       } else {
-        // Respond immediately to avoid timeout, then open modal asynchronously
-        clearTimeout(safetyTimeout);
-        res.json({
-          response_type: 'ephemeral',
-          text: 'Opening configuration modal...'
-        });
+        // Use the current channel context
+        const channelId = req.body.channel_id;
 
-        // Open modal asynchronously (don't await here)
-        openAddChannelModal(trigger_id).catch(error => {
-          console.error('Error opening add channel modal:', error);
-        });
-        return;
+        // Check if channel already exists
+        if (channelConfigModule.channelExists(channelId)) {
+          responseText = `❌ Channel <#${channelId}> is already configured. Use \`/dasilva editchannel\` to modify it.`;
+        } else {
+          // Get channel info from Slack
+          try {
+            const channelInfo = await slackClient.conversations.info({ channel: channelId });
+            const channelName = channelInfo.channel.name;
+            const docsFolder = channelName; // Use channel name as docs folder
+            const docsPath = path.join(__dirname, 'docs', docsFolder);
+
+            // Create docs folder if it doesn't exist
+            if (!fs.existsSync(docsPath)) {
+              fs.mkdirSync(docsPath, { recursive: true });
+              console.log(`Created docs folder: ${docsPath}`);
+            }
+
+            // Create default instructions file if it doesn't exist
+            const instructionsFile = '_instructions.md';
+            const instructionsPath = path.join(docsPath, instructionsFile);
+            if (!fs.existsSync(instructionsPath)) {
+              fs.writeFileSync(instructionsPath,
+                `# ${channelName} Channel Instructions\n\nAnswer questions based on the documentation in this folder.`);
+              console.log(`Created instructions file: ${instructionsPath}`);
+            }
+
+            // Add channel configuration
+            const result = channelConfigModule.addChannel(channelId, {
+              name: channelName,
+              docsFolder: docsFolder,
+              instructionsFile: instructionsFile
+            });
+
+            if (result.success) {
+              responseText = `✓ Channel <#${channelId}> configured successfully!\n\nDocs folder: \`docs/${docsFolder}\`\nInstructions: \`${instructionsFile}\`\n\n_Add markdown files to the docs folder and I'll start using them._`;
+
+              // Reload channel asynchronously
+              reloadChannel(channelId).then(reloaded => {
+                console.log(`✓ Channel ${channelId} added by admin ${user_id}. Reload: ${reloaded ? 'success' : 'failed'}`);
+              }).catch(error => {
+                console.error(`Error reloading channel ${channelId}:`, error);
+              });
+            } else {
+              responseText = `❌ Failed to add channel: ${result.error}`;
+            }
+          } catch (error) {
+            console.error('Error adding channel:', error);
+            responseText = '❌ Failed to get channel information. Make sure the bot is a member of this channel.';
+          }
+        }
       }
     } else if (args.startsWith('editchannel')) {
       // Admin-only command
@@ -379,32 +420,30 @@ I monitor specific channels and help answer questions.
           }
         }
       }
-    } else if (args.startsWith('deletechannel')) {
+    } else if (args === 'deletechannel') {
       // Admin-only command
       if (!isAdmin(user_id)) {
         responseText = '❌ You must be an admin to configure channels.';
       } else {
-        const channelIdMatch = args.match(/^deletechannel\s+([A-Z0-9]+)$/i);
-        if (!channelIdMatch) {
-          responseText = '❌ Invalid format. Use: `/dasilva deletechannel C0AB1P97UBB`';
-        } else {
-          const channelId = channelIdMatch[1].toUpperCase();
-          const config = channelConfigModule.getChannel(channelId);
-          if (!config) {
-            responseText = `❌ Channel ${channelId} is not configured.`;
-          } else {
-            // Respond immediately to avoid timeout, then open modal asynchronously
-            clearTimeout(safetyTimeout);
-            res.json({
-              response_type: 'ephemeral',
-              text: 'Opening confirmation modal...'
-            });
+        // Use the current channel context
+        const channelId = req.body.channel_id;
+        const config = channelConfigModule.getChannel(channelId);
 
-            // Open modal asynchronously (don't await here)
-            openDeleteConfirmationModal(trigger_id, channelId, config).catch(error => {
-              console.error('Error opening delete confirmation modal:', error);
-            });
-            return;
+        if (!config) {
+          responseText = `❌ This channel is not configured.`;
+        } else {
+          // Delete the channel
+          const result = channelConfigModule.deleteChannel(channelId);
+
+          if (result.success) {
+            // Remove from memory
+            delete channelDocs[channelId];
+            delete channelInstructions[channelId];
+
+            responseText = `✓ Channel <#${channelId}> configuration has been removed.\n\n_Note: Documentation files in \`docs/${config.docsFolder}\` were not deleted._`;
+            console.log(`✓ Channel ${channelId} deleted by admin ${user_id}`);
+          } else {
+            responseText = `❌ Failed to delete channel: ${result.error}`;
           }
         }
       }
@@ -487,14 +526,8 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
     if (type === 'view_submission') {
       const callback_id = view.callback_id;
 
-      if (callback_id === 'add_channel_modal') {
-        const result = await handleAddChannelSubmission(view, user.id);
-        return res.json(result);
-      } else if (callback_id === 'edit_channel_modal') {
+      if (callback_id === 'edit_channel_modal') {
         const result = await handleEditChannelSubmission(view, user.id);
-        return res.json(result);
-      } else if (callback_id === 'delete_channel_modal') {
-        const result = await handleDeleteChannelConfirmation(view, user.id);
         return res.json(result);
       }
     }
@@ -514,18 +547,6 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
 });
 
 // Modal opener functions
-async function openAddChannelModal(triggerId) {
-  try {
-    await slackClient.views.open({
-      trigger_id: triggerId,
-      view: modalDefs.getAddChannelModal()
-    });
-  } catch (error) {
-    console.error('Error opening add channel modal:', error);
-    throw error;
-  }
-}
-
 async function openEditChannelModal(triggerId, channelId, config) {
   try {
     await slackClient.views.open({
@@ -538,71 +559,7 @@ async function openEditChannelModal(triggerId, channelId, config) {
   }
 }
 
-async function openDeleteConfirmationModal(triggerId, channelId, config) {
-  try {
-    await slackClient.views.open({
-      trigger_id: triggerId,
-      view: modalDefs.getDeleteConfirmationModal(channelId, config.name)
-    });
-  } catch (error) {
-    console.error('Error opening delete confirmation modal:', error);
-    throw error;
-  }
-}
-
 // Modal submission handlers
-async function handleAddChannelSubmission(view, userId) {
-  // Extract values from modal
-  const values = view.state.values;
-  const channelId = values.channel_id_block.channel_id.value.trim().toUpperCase();
-  const channelName = values.channel_name_block.channel_name.value.trim();
-  const docsFolder = values.docs_folder_block.docs_folder.value.trim();
-  const instructionsFile = values.instructions_file_block.instructions_file.value.trim();
-
-  console.log(`Admin ${userId} attempting to add channel: ${channelId}`);
-
-  // Add channel using the module
-  const result = channelConfigModule.addChannel(channelId, {
-    name: channelName,
-    docsFolder: docsFolder,
-    instructionsFile: instructionsFile
-  });
-
-  if (!result.success) {
-    // Return validation errors
-    if (result.errors) {
-      return {
-        response_action: 'errors',
-        errors: {
-          channel_id_block: result.errors.channel_id || undefined,
-          channel_name_block: result.errors.channel_name || undefined,
-          docs_folder_block: result.errors.docs_folder || undefined,
-          instructions_file_block: result.errors.instructions_file || undefined
-        }
-      };
-    } else {
-      return {
-        response_action: 'errors',
-        errors: {
-          channel_id_block: result.error
-        }
-      };
-    }
-  }
-
-  // Clear the modal immediately (must respond within 3 seconds)
-  const response = { response_action: 'clear' };
-
-  // Reload the channel configuration asynchronously (don't await - can take >3s)
-  reloadChannel(channelId).then(reloaded => {
-    console.log(`✓ Channel ${channelId} added by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
-  }).catch(error => {
-    console.error(`Error reloading channel ${channelId} after add:`, error);
-  });
-
-  return response;
-}
-
 async function handleEditChannelSubmission(view, userId) {
   // Extract channel ID from private_metadata
   const channelId = view.private_metadata;
@@ -650,33 +607,6 @@ async function handleEditChannelSubmission(view, userId) {
   }).catch(error => {
     console.error(`Error reloading channel ${channelId} after update:`, error);
   });
-
-  return { response_action: 'clear' };
-}
-
-async function handleDeleteChannelConfirmation(view, userId) {
-  // Extract channel ID from private_metadata
-  const channelId = view.private_metadata;
-
-  console.log(`Admin ${userId} attempting to delete channel: ${channelId}`);
-
-  // Delete channel using the module
-  const result = channelConfigModule.deleteChannel(channelId);
-
-  if (!result.success) {
-    return {
-      response_action: 'errors',
-      errors: {
-        _general: result.error
-      }
-    };
-  }
-
-  // Remove from memory
-  delete channelDocs[channelId];
-  delete channelInstructions[channelId];
-
-  console.log(`✓ Channel ${channelId} deleted by admin ${userId}`);
 
   return { response_action: 'clear' };
 }

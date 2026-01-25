@@ -35,6 +35,8 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 - ✅ AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
 - ✅ Two interaction modes: @mentions (public) and ambient (private ephemeral)
 - ✅ **Slash commands** for user preferences (`/dasilva help`, `/dasilva silence`, etc.)
+- ✅ **Admin configuration via Slack modals** - Add/edit/delete channels without server access
+- ✅ **Hot reload** - Channel changes take effect immediately (no restart needed)
 - ✅ Smart question detection - only ambient mode responds to actual questions
 - ✅ Per-user rate limiting to prevent spam (ambient mode only)
 - ✅ Ephemeral messages for ambient responses (only visible to questioner)
@@ -85,11 +87,14 @@ This bot is currently deployed and actively serving **two channels**:
 
 ```
 dasilva/
-├── app.js                           # Main application (467 lines)
+├── app.js                           # Main application
+├── user-preferences.js              # User preference management (silence, cooldown)
+├── channel-config.js                # Channel configuration management (CRUD operations)
+├── modal-definitions.js             # Slack Block Kit modal definitions
 ├── package.json                     # Dependencies and scripts
 ├── package-lock.json                # Locked dependency versions
 ├── .env                            # Environment variables (gitignored, contains API keys)
-├── .env.example                    # Template for environment configuration
+├── env.example                      # Template for environment configuration
 ├── .gitignore                      # Git ignore rules
 ├── eslint.config.js                # ESLint configuration
 ├── README.md                       # This file
@@ -235,6 +240,106 @@ Be direct and helpful. Don't fabricate information not in the docs.
    - Create `.md` files: `docs/product-team/overview.md`, `features.md`, etc.
    - All `.md` files except `_instructions.md` will be chunked and semantically searched
    - `_instructions.md` is always included with every request
+
+### Admin Configuration via Slack Modals
+
+Admins can configure channels directly from Slack using interactive modals instead of manually editing configuration files.
+
+#### Setting Up Admin Users
+
+1. Add admin Slack user IDs to your `.env` file:
+```bash
+# Admin users who can configure channels (comma-separated Slack user IDs)
+ADMIN_USERS=U01234ABCDE,U56789FGHIJ
+```
+
+2. Find your Slack user ID:
+   - Click your profile in Slack
+   - Select "Profile" → "More" → "Copy Member ID"
+
+#### Admin Slash Commands
+
+Admin users have access to additional slash commands:
+
+- **`/dasilva addchannel`** - Opens an interactive modal to add a new channel configuration
+  - Fill in: Channel ID, Channel Name, Docs Folder, Instructions File
+  - Validates input and auto-reloads the channel (no bot restart needed)
+
+- **`/dasilva editchannel <channel_id>`** - Opens a modal to edit an existing channel
+  - Example: `/dasilva editchannel C0AB1P97UBB`
+  - Pre-fills current values for easy editing
+  - Hot-reloads the channel after saving
+
+- **`/dasilva deletechannel <channel_id>`** - Opens a confirmation modal to delete a channel
+  - Example: `/dasilva deletechannel C0AB1P97UBB`
+  - Requires confirmation before deletion
+  - Note: Does not delete documentation files, only removes from configuration
+
+- **`/dasilva listchannels`** - Shows all configured channels with their settings
+
+#### How It Works
+
+1. Admin runs `/dasilva addchannel` in Slack
+2. An interactive form appears with input fields
+3. Admin fills in:
+   - **Channel ID** (e.g., `C0AB1P97UBB` - find in channel details)
+   - **Channel Name** (e.g., `engineering` - human-readable identifier)
+   - **Docs Folder** (e.g., `engineering` - folder inside `/docs` that must exist)
+   - **Instructions File** (e.g., `_instructions.md` - system instructions file)
+4. On submit, the bot:
+   - Validates all inputs (channel ID format, folder exists, etc.)
+   - Saves to `docs/channel-config.json`
+   - Hot-reloads the channel documentation (no restart needed)
+   - Shows success or error messages
+
+#### Validation & Error Handling
+
+The system performs comprehensive validation:
+- Channel ID format must match Slack's pattern (`C` followed by 10 alphanumeric characters)
+- Channel IDs cannot be duplicated
+- Documentation folder must exist before adding channel
+- All required fields must be filled
+- Inline error messages appear in the modal for invalid inputs
+
+#### Hot Reload
+
+After adding or editing a channel, the bot automatically:
+- Reloads the channel configuration from disk
+- Re-processes all documentation files
+- Regenerates embeddings for semantic search
+- Updates in-memory cache
+
+No bot restart required! The channel is ready to use immediately.
+
+#### Troubleshooting
+
+**"Folder does not exist" error:**
+```bash
+# Create the documentation folder first
+mkdir -p docs/your-channel-name
+```
+
+**"You must be an admin" message:**
+- Verify your Slack user ID is in the `ADMIN_USERS` environment variable
+- Restart the bot after adding your user ID to `.env`
+
+**Modal doesn't open:**
+- Check bot logs for API errors
+- Ensure your Slack app has the `commands` scope configured
+- Verify the interactions endpoint is set up (see Slack App Configuration below)
+
+### Slack App Configuration (for Admin Features)
+
+In addition to the basic Slack app setup, admin features require:
+
+1. **Interactivity & Shortcuts**:
+   - Enable Interactivity
+   - Set Request URL: `https://your-domain.com/slack/interactions`
+   - This allows the bot to display and process modal forms
+
+2. **Slash Commands** (update usage hint):
+   - Update `/dasilva` command usage hint to include admin commands:
+   - Usage Hint: `help | silence | unsilence | cooldown <minutes> | addchannel | editchannel <id> | deletechannel <id> | listchannels`
 
 ### Running the Bot
 

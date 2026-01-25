@@ -34,6 +34,7 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 - ✅ Channel-specific documentation from Markdown files
 - ✅ AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
 - ✅ Two interaction modes: @mentions (public) and ambient (private ephemeral)
+- ✅ **Slash commands** for user preferences (`/dasilva help`, `/dasilva silence`, etc.)
 - ✅ Smart question detection - only ambient mode responds to actual questions
 - ✅ Per-user rate limiting to prevent spam (ambient mode only)
 - ✅ Ephemeral messages for ambient responses (only visible to questioner)
@@ -167,16 +168,22 @@ DEBUG_MODE=false
    - `channels:read`
    - `channels:history`
 
-3. Install the app to your workspace and copy the Bot User OAuth Token
+3. **Slash Commands**:
+   - Create a new slash command: `/dasilva`
+   - Request URL: `https://your-domain.com/slack/commands`
+   - Short Description: "Interact with Dasilva bot"
+   - Usage Hint: `help | silence | unsilence | cooldown <minutes>`
 
-4. **Event Subscriptions**:
+4. Install the app to your workspace and copy the Bot User OAuth Token
+
+5. **Event Subscriptions**:
    - Enable Events
    - Set Request URL: `https://your-domain.com/slack/events`
    - Subscribe to bot events:
      - `app_mention`
      - `message.channels`
 
-5. Invite the bot to channels: `/invite @dasilva` in each channel
+6. Invite the bot to channels: `/invite @dasilva` in each channel
 
 ### Channel Configuration
 
@@ -258,6 +265,44 @@ Bot: Responds publicly in a thread (visible to everyone)
 User: `what are our key features?`
 Bot: Responds with ephemeral message (only visible to the user who asked)
 
+## User Commands
+
+Users can control their interaction with the bot using slash commands. All responses are ephemeral (private) and won't clutter channels.
+
+### Available Slash Commands
+
+**`/dasilva help`** (or `/dasilva about` or just `/dasilva`)
+Display information about the bot, available commands, and your current settings.
+
+**`/dasilva silence`**
+Opt-out of ambient mode responses. The bot will stop responding to your questions in channels. @mentions will still work.
+
+**`/dasilva unsilence`**
+Resume receiving ambient mode responses.
+
+**`/dasilva cooldown <minutes>`**
+Set a custom cooldown period in minutes (0-1440). This overrides the default 5-minute cooldown.
+
+Examples:
+```
+/dasilva cooldown 10
+```
+Sets cooldown to 10 minutes.
+
+```
+/dasilva cooldown 0
+```
+Disables cooldown (instant responses).
+
+### Command Notes
+
+- **Slash commands are recommended** - They're cleaner and don't create visible messages in channels
+- Commands are **case-insensitive** - `/dasilva silence`, `/dasilva Silence`, and `/dasilva SILENCE` all work
+- Commands work in **any channel where the bot is installed**
+- All command responses are **ephemeral (private)** - only you see the response
+- Settings are **global** - they apply across all channels where the bot is active
+- Custom cooldowns and silence preferences **persist** across bot restarts
+
 ## Configuration Options
 
 | Variable | Default | Description |
@@ -317,9 +362,10 @@ Bot: Responds with ephemeral message (only visible to the user who asked)
 - [ ] **Analytics** - Track questions, responses, channels
 
 ### Medium Priority (UX Improvements)
+- [x] **User slash commands** - `/dasilva` commands for user preferences
 - [ ] **Typing indicators** - Show bot is "thinking"
 - [ ] **Reaction-based controls** - Let users dismiss/retry with emoji reactions
-- [ ] **Admin commands** - Slash commands for managing bot
+- [ ] **Admin commands** - Additional slash commands for managing bot (reload docs, stats, etc.)
 - [ ] **Feedback collection** - 👍/👎 reactions for responses
 - [ ] **Source citations** - Link to specific docs in responses
 - [ ] **Multi-file search** - Better chunking/search for large doc sets

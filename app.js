@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('@xenova/transformers');
+const userPrefs = require('./user-preferences');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,6 +17,7 @@ const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 const MODEL = process.env.MODEL || 'gpt-5-mini'; // OpenAI model to use
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 2000; // Characters per chunk
 const MAX_CHUNKS = parseInt(process.env.MAX_CHUNKS) || 5; // Number of chunks to include
+const HELP_FOOTER = '\n\n_Type `/dasilva help` for more information_';
 
 // Helper for debug logging
 function debug(...args) {
@@ -197,11 +199,15 @@ function looksLikeQuestion(text) {
 function shouldRespondToUser(channelId, userId) {
   const key = `${channelId}:${userId}`;
   const lastTime = lastResponseTimes.get(key);
-  
+
   if (!lastTime) return true;
-  
+
+  // Check for custom cooldown, otherwise use default
+  const customCooldown = userPrefs.getUserCooldown(userId);
+  const cooldown = customCooldown !== null ? customCooldown : RESPONSE_COOLDOWN_SECONDS;
+
   const timeSinceLastResponse = (Date.now() - lastTime) / 1000;
-  return timeSinceLastResponse >= RESPONSE_COOLDOWN_SECONDS;
+  return timeSinceLastResponse >= cooldown;
 }
 
 // Helper: Record that we responded to a user
@@ -210,12 +216,99 @@ function recordResponse(channelId, userId) {
   lastResponseTimes.set(key, Date.now());
 }
 
-// Middleware to parse JSON
+// Middleware to parse JSON and URL-encoded data
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get('/', (req, res) => {
   res.send('dasilva is alive! 🤖');
+});
+
+// Slack slash command endpoint
+app.post('/slack/commands', async (req, res) => {
+  try {
+    const { command, text, user_id } = req.body;
+
+    // Verify it's our command
+    if (command !== '/dasilva') {
+      return res.status(404).send('Unknown command');
+    }
+
+    // Parse the subcommand
+    const args = text.trim().toLowerCase();
+
+    let responseText = '';
+
+    // Handle different subcommands
+    if (args === 'help' || args === 'about' || args === '') {
+      const userPref = userPrefs.getUserPreference(user_id);
+      const silencedStatus = userPref.silenced ? 'Yes' : 'No';
+      const cooldownStatus = userPref.customCooldown !== null
+        ? `${userPref.customCooldown / 60} minutes`
+        : `Default (${RESPONSE_COOLDOWN_SECONDS / 60} minutes)`;
+
+      responseText = `
+
+I monitor specific channels and help answer questions.
+
+*How I responsd:*
+• *@mention me* - I reply *publicly* in the channel
+• *Ask a question in the channel* - I may reply *privately* (DM) to avoid channel spam and not discourage participation
+
+#What do I know:*
+• I’m trained on internal and external documentation relevant to this channel’s topics
+
+*Slash Commands:*
+• \`/dasilva help\` - Show this message
+• \`/dasilva silence\` - Pause private (ambient) responses
+• \`/dasilva unsilence\` - Resume private responses
+• \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
+
+*Your current settings:*
+• Silenced: ${silencedStatus}
+• Cooldown: ${cooldownStatus}`;
+    } else if (args === 'silence') {
+      userPrefs.updateUserPreference(user_id, { silenced: true });
+      responseText = "✓ You've been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
+      console.log(`User ${user_id} enabled silence mode via slash command`);
+    } else if (args === 'unsilence') {
+      userPrefs.updateUserPreference(user_id, { silenced: false });
+      responseText = "✓ Welcome back! You'll now receive ambient responses when you ask questions.";
+      console.log(`User ${user_id} disabled silence mode via slash command`);
+    } else if (args.startsWith('cooldown ')) {
+      const minutesMatch = args.match(/^cooldown\s+(\d+)$/);
+      if (!minutesMatch) {
+        responseText = "❌ Invalid cooldown format. Use a number like: `/dasilva cooldown 10` (for 10 minutes).";
+      } else {
+        const minutes = parseInt(minutesMatch[1], 10);
+        if (minutes < 0 || minutes > 1440) {
+          responseText = `❌ Cooldown must be between 0 and 1440 minutes (24 hours). You provided: ${minutes} minutes.`;
+        } else {
+          const cooldownSeconds = minutes * 60;
+          userPrefs.updateUserPreference(user_id, { customCooldown: cooldownSeconds });
+          const minuteText = minutes === 1 ? 'minute' : 'minutes';
+          responseText = `✓ Your cooldown has been set to ${minutes} ${minuteText}.`;
+          console.log(`User ${user_id} set custom cooldown to ${minutes} minutes via slash command`);
+        }
+      }
+    } else {
+      responseText = `❌ Unknown command: \`${text}\`\n\nType \`/dasilva help\` to see available commands.`;
+    }
+
+    // Respond ephemerally (only visible to the user)
+    res.json({
+      response_type: 'ephemeral',
+      text: responseText
+    });
+
+  } catch (error) {
+    console.error('Error handling slash command:', error);
+    res.json({
+      response_type: 'ephemeral',
+      text: '❌ Sorry, there was an error processing your command. Please try again.'
+    });
+  }
 });
 
 // Slack event endpoint
@@ -358,6 +451,12 @@ async function handleChannelMessage(event) {
       return;
     }
 
+    // Check if user has silenced themselves
+    if (userPrefs.isUserSilenced(user)) {
+      debug(`Skipping - user ${user} is silenced`);
+      return;
+    }
+
     // Smart filter: Only respond to questions/requests
     if (!looksLikeQuestion(text)) {
       debug('Skipping - does not look like a question');
@@ -414,7 +513,7 @@ async function handleChannelMessage(event) {
       await slackClient.chat.postEphemeral({
         channel: channel,
         user: user,
-        text: "Sorry, I wasn't able to generate a response. Could you try rephrasing your question?"
+        text: "Sorry, I wasn't able to generate a response. Could you try rephrasing your question?" + HELP_FOOTER
       });
       return;
     }
@@ -423,7 +522,7 @@ async function handleChannelMessage(event) {
     await slackClient.chat.postEphemeral({
       channel: channel,  // Post in the same channel
       user: user,        // Only this user can see it
-      text: `_Only visible to you:_\n\n${reply}`
+      text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`
     });
 
     // Record that we responded to this user
@@ -435,13 +534,13 @@ async function handleChannelMessage(event) {
   } catch (error) {
     console.error('Error handling channel message:', error);
     console.error('Error details:', error.message);
-    
+
     // Notify user of error via ephemeral message
     try {
       await slackClient.chat.postEphemeral({
         channel: event.channel,
         user: event.user,
-        text: "Sorry, I encountered an error processing your message. Please try again."
+        text: "Sorry, I encountered an error processing your message. Please try again." + HELP_FOOTER
       });
     } catch (slackError) {
       console.error('Error sending error message to Slack:', slackError);

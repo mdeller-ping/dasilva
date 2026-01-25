@@ -590,16 +590,15 @@ async function handleAddChannelSubmission(view, userId) {
     }
   }
 
-  // Reload the channel configuration
-  const reloaded = await reloadChannel(channelId);
-
-  // Clear the modal
+  // Clear the modal immediately (must respond within 3 seconds)
   const response = { response_action: 'clear' };
 
-  // Send success message (we can't send it here as modal submission doesn't allow it)
-  // Will be sent via slash command handler
-
-  console.log(`✓ Channel ${channelId} added by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
+  // Reload the channel configuration asynchronously (don't await - can take >3s)
+  reloadChannel(channelId).then(reloaded => {
+    console.log(`✓ Channel ${channelId} added by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
+  }).catch(error => {
+    console.error(`Error reloading channel ${channelId} after add:`, error);
+  });
 
   return response;
 }
@@ -644,10 +643,13 @@ async function handleEditChannelSubmission(view, userId) {
     }
   }
 
-  // Reload the channel configuration
-  const reloaded = await reloadChannel(channelId);
-
-  console.log(`✓ Channel ${channelId} updated by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
+  // Clear the modal immediately (must respond within 3 seconds)
+  // Reload the channel configuration asynchronously (don't await - can take >3s)
+  reloadChannel(channelId).then(reloaded => {
+    console.log(`✓ Channel ${channelId} updated by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
+  }).catch(error => {
+    console.error(`Error reloading channel ${channelId} after update:`, error);
+  });
 
   return { response_action: 'clear' };
 }

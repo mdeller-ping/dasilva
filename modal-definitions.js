@@ -88,6 +88,69 @@ function getEditChannelModal(channelId, existingConfig) {
   };
 }
 
+/**
+ * Get modal for confirming channel deletion
+ */
+function getDeleteChannelModal(channelId, channelConfig) {
+  return {
+    type: 'modal',
+    callback_id: 'delete_channel_modal',
+    private_metadata: channelId,
+    title: {
+      type: 'plain_text',
+      text: 'Delete Channel'
+    },
+    submit: {
+      type: 'plain_text',
+      text: 'Delete'
+    },
+    close: {
+      type: 'plain_text',
+      text: 'Cancel'
+    },
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: ':warning: *This action is permanent and cannot be undone!*'
+        }
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `You are about to delete the configuration for:\n\n*${channelConfig.name}* (\`${channelId}\`)\n\nDocs Folder: \`${channelConfig.docsFolder}\`\nInstructions: \`${channelConfig.instructionsFile}\``
+        }
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'input',
+        block_id: 'confirmation_block',
+        label: {
+          type: 'plain_text',
+          text: `Type the channel name "${channelConfig.name}" to confirm`
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'confirmation_input',
+          placeholder: {
+            type: 'plain_text',
+            text: channelConfig.name
+          }
+        },
+        hint: {
+          type: 'plain_text',
+          text: 'This confirmation is required to prevent accidental deletion'
+        }
+      }
+    ]
+  };
+}
+
 module.exports = {
-  getEditChannelModal
+  getEditChannelModal,
+  getDeleteChannelModal
 };

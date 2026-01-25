@@ -304,7 +304,6 @@ I monitor specific channels and help answer questions.
 
 *Admin Commands:*
 • \`/dasilva addchannel\` - Add current channel to configuration
-• \`/dasilva editchannel\` - Edit current channel configuration
 • \`/dasilva deletechannel\` - Remove current channel from configuration
 • \`/dasilva listchannels\` - List all configured channels`;
       }
@@ -391,32 +390,6 @@ I monitor specific channels and help answer questions.
           }
         }
       }
-    } else if (args === 'editchannel') {
-      // Admin-only command
-      if (!isAdmin(user_id)) {
-        responseText = '❌ You must be an admin to configure channels.';
-      } else {
-        // Use the current channel context
-        const channelId = req.body.channel_id;
-        const config = channelConfigModule.getChannel(channelId);
-
-        if (!config) {
-          responseText = `❌ This channel is not configured. Use \`/dasilva addchannel\` to add it.`;
-        } else {
-          // Respond immediately to avoid timeout, then open modal asynchronously
-          clearTimeout(safetyTimeout);
-          res.json({
-            response_type: 'ephemeral',
-            text: 'Opening configuration modal...'
-          });
-
-          // Open modal asynchronously (don't await here)
-          openEditChannelModal(trigger_id, channelId, config).catch(error => {
-            console.error('Error opening edit channel modal:', error);
-          });
-          return;
-        }
-      }
     } else if (args === 'deletechannel') {
       // Admin-only command
       if (!isAdmin(user_id)) {
@@ -429,19 +402,18 @@ I monitor specific channels and help answer questions.
         if (!config) {
           responseText = `❌ This channel is not configured.`;
         } else {
-          // Delete the channel
-          const result = channelConfigModule.deleteChannel(channelId);
+          // Respond immediately to avoid timeout, then open modal asynchronously
+          clearTimeout(safetyTimeout);
+          res.json({
+            response_type: 'ephemeral',
+            text: 'Opening delete confirmation...'
+          });
 
-          if (result.success) {
-            // Remove from memory
-            delete channelDocs[channelId];
-            delete channelInstructions[channelId];
-
-            responseText = `✓ Channel <#${channelId}> configuration has been removed.\n\n_Note: Documentation files in \`docs/${config.docsFolder}\` were not deleted._`;
-            console.log(`✓ Channel ${channelId} deleted by admin ${user_id}`);
-          } else {
-            responseText = `❌ Failed to delete channel: ${result.error}`;
-          }
+          // Open modal asynchronously (don't await here)
+          openDeleteChannelModal(trigger_id, channelId, config).catch(error => {
+            console.error('Error opening delete channel modal:', error);
+          });
+          return;
         }
       }
     } else if (args === 'listchannels') {
@@ -523,8 +495,8 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
     if (type === 'view_submission') {
       const callback_id = view.callback_id;
 
-      if (callback_id === 'edit_channel_modal') {
-        const result = await handleEditChannelSubmission(view, user.id);
+      if (callback_id === 'delete_channel_modal') {
+        const result = await handleDeleteChannelSubmission(view, user.id);
         return res.json(result);
       }
     }
@@ -544,67 +516,69 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
 });
 
 // Modal opener functions
-async function openEditChannelModal(triggerId, channelId, config) {
+async function openDeleteChannelModal(triggerId, channelId, config) {
   try {
     await slackClient.views.open({
       trigger_id: triggerId,
-      view: modalDefs.getEditChannelModal(channelId, config)
+      view: modalDefs.getDeleteChannelModal(channelId, config)
     });
   } catch (error) {
-    console.error('Error opening edit channel modal:', error);
+    console.error('Error opening delete channel modal:', error);
     throw error;
   }
 }
 
 // Modal submission handlers
-async function handleEditChannelSubmission(view, userId) {
+async function handleDeleteChannelSubmission(view, userId) {
   // Extract channel ID from private_metadata
   const channelId = view.private_metadata;
 
-  // Extract values from modal
-  const values = view.state.values;
-  const channelName = values.channel_name_block.channel_name.value.trim();
-  const docsFolder = values.docs_folder_block.docs_folder.value.trim();
-  const instructionsFile = values.instructions_file_block.instructions_file.value.trim();
-
-  console.log(`Admin ${userId} attempting to edit channel: ${channelId}`);
-
-  // Update channel using the module
-  const result = channelConfigModule.updateChannel(channelId, {
-    name: channelName,
-    docsFolder: docsFolder,
-    instructionsFile: instructionsFile
-  });
-
-  if (!result.success) {
-    // Return validation errors
-    if (result.errors) {
-      return {
-        response_action: 'errors',
-        errors: {
-          channel_name_block: result.errors.channel_name || undefined,
-          docs_folder_block: result.errors.docs_folder || undefined,
-          instructions_file_block: result.errors.instructions_file || undefined
-        }
-      };
-    } else {
-      return {
-        response_action: 'errors',
-        errors: {
-          channel_name_block: result.error
-        }
-      };
-    }
+  // Get the channel configuration to verify the name
+  const config = channelConfigModule.getChannel(channelId);
+  if (!config) {
+    return {
+      response_action: 'errors',
+      errors: {
+        confirmation_block: 'Channel not found in configuration'
+      }
+    };
   }
 
-  // Clear the modal immediately (must respond within 3 seconds)
-  // Reload the channel configuration asynchronously (don't await - can take >3s)
-  reloadChannel(channelId).then(reloaded => {
-    console.log(`✓ Channel ${channelId} updated by admin ${userId}. Reload: ${reloaded ? 'success' : 'failed'}`);
-  }).catch(error => {
-    console.error(`Error reloading channel ${channelId} after update:`, error);
-  });
+  // Extract confirmation input from modal
+  const values = view.state.values;
+  const confirmationInput = values.confirmation_block.confirmation_input.value.trim();
 
+  console.log(`Admin ${userId} attempting to delete channel: ${channelId}`);
+
+  // Validate that user typed the exact channel name
+  if (confirmationInput !== config.name) {
+    return {
+      response_action: 'errors',
+      errors: {
+        confirmation_block: `You must type "${config.name}" exactly to confirm deletion`
+      }
+    };
+  }
+
+  // Delete the channel
+  const result = channelConfigModule.deleteChannel(channelId);
+
+  if (!result.success) {
+    return {
+      response_action: 'errors',
+      errors: {
+        confirmation_block: result.error
+      }
+    };
+  }
+
+  // Remove from memory
+  delete channelDocs[channelId];
+  delete channelInstructions[channelId];
+
+  console.log(`✓ Channel ${channelId} deleted by admin ${userId}`);
+
+  // Clear the modal
   return { response_action: 'clear' };
 }
 

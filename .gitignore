@@ -6,7 +6,7 @@ yarn-error.log*
 
 # Local work tasks
 
-TODO.md
+todo.md
 
 # Environment variables
 .env

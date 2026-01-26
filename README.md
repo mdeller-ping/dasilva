@@ -144,35 +144,81 @@ MAX_CHUNKS=5
 DEBUG_MODE=false
 ```
 
+### Setting Up Admin Users
+
+1. Add admin Slack user IDs to your `.env` file:
+```bash
+# Admin users who can configure channels (comma-separated Slack user IDs)
+ADMIN_USERS=U01234ABCDE,U56789FGHIJ
+```
+
+2. Find your Slack user ID:
+   - Click your profile in Slack
+   - Select "Profile" → "More" → "Copy Member ID"
+
 ### Slack App Configuration
 
 1. Create a new Slack app at https://api.slack.com/apps
 
-2. **OAuth & Permissions** - Add Bot Token Scopes:
-   - `app_mentions:read`
-   - `chat:write`
-   - `channels:read`
-   - `channels:history`
-   - `files:read` (for canvas file uploads)
-   - `canvases:read` (for canvas file uploads)
+```json
+{
+    "display_information": {
+        "name": "Dasilva - Product Champion"
+    },
+    "features": {
+        "bot_user": {
+            "display_name": "Dasilva - Product Champion",
+            "always_online": false
+        },
+        "slash_commands": [
+            {
+                "command": "/dasilva",
+                "url": "https://<YOUR.URL>/slack/commands",
+                "description": "Interact with Dasilva bot",
+                "usage_hint": "help | silence | unsilence | cooldown <minutes>",
+                "should_escape": false
+            }
+        ]
+    },
+    "oauth_config": {
+        "scopes": {
+            "bot": [
+                "app_mentions:read",
+                "channels:history",
+                "channels:read",
+                "chat:write",
+                "commands",
+                "im:write",
+                "incoming-webhook",
+                "users:read",
+                "files:read",
+                "canvases:read",
+                "groups:history"
+            ]
+        }
+    },
+    "settings": {
+        "event_subscriptions": {
+            "request_url": "https://<YOUR.URL>/slack/events",
+            "bot_events": [
+                "app_mention",
+                "file_shared",
+                "message.channels",
+                "message.groups"
+            ]
+        },
+        "interactivity": {
+            "is_enabled": true,
+            "request_url": "https://<YOUR.URL>/slack/interactions"
+        },
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+    }
+}
+```
 
-3. **Slash Commands**:
-   - Create a new slash command: `/dasilva`
-   - Request URL: `https://your-domain.com/slack/commands`
-   - Short Description: "Interact with Dasilva bot"
-   - Usage Hint: `help | silence | unsilence | cooldown <minutes>`
-
-4. Install the app to your workspace and copy the Bot User OAuth Token
-
-5. **Event Subscriptions**:
-   - Enable Events
-   - Set Request URL: `https://your-domain.com/slack/events`
-   - Subscribe to bot events:
-     - `app_mention`
-     - `message.channels`
-     - `file_shared` (for canvas file uploads)
-
-6. Invite the bot to channels: `/invite @dasilva` in each channel
+2. Install the app to your workspace and copy the Bot User OAuth Token
 
 ### Channel Configuration
 
@@ -219,18 +265,6 @@ Be direct and helpful. Don't fabricate information not in the docs.
 ### Admin Configuration via Slack
 
 Admins can configure channels directly from Slack without server access.
-
-#### Setting Up Admin Users
-
-1. Add admin Slack user IDs to your `.env` file:
-```bash
-# Admin users who can configure channels (comma-separated Slack user IDs)
-ADMIN_USERS=U01234ABCDE,U56789FGHIJ
-```
-
-2. Find your Slack user ID:
-   - Click your profile in Slack
-   - Select "Profile" → "More" → "Copy Member ID"
 
 #### Admin Slash Commands
 

@@ -104,28 +104,19 @@ dasilva/
 
 ### Installation
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/mdeller-ping/dasilva
 cd dasilva
-```
-
-2. Install dependencies:
-```bash
 npm install
-```
-
-3. Create `.env` from the example:
-```bash
 cp env.example .env
-```
-
-5. Start the bot:
-```bash
 npm start
 ```
 
-6. Note <https://YOUR.BOT.URL>
+Navigate to <https://YOUR.BOT.URL>
+
+```bash
+Dasilva is alive!
+```
 
 ### Slack App Configuration
 

@@ -30,21 +30,21 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 ## Current Features (MVP)
 
 ### Core Functionality
-- ✅ **Local semantic search** using `@xenova/transformers` embeddings
-- ✅ Channel-specific documentation from Markdown files
-- ✅ AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
-- ✅ Two interaction modes: @mentions (public) and ambient (private ephemeral)
-- ✅ **Slash commands** for user preferences (`/dasilva help`, `/dasilva silence`, etc.)
-- ✅ **Admin configuration via Slack modals** - Add/edit/delete channels without server access
-- ✅ **Hot reload** - Channel changes take effect immediately (no restart needed)
-- ✅ Smart question detection - only ambient mode responds to actual questions
-- ✅ Per-user rate limiting to prevent spam (ambient mode only)
-- ✅ Ephemeral messages for ambient responses (only visible to questioner)
-- ✅ Public threaded replies for @mentions
-- ✅ **Slack formatting support** - proper code blocks, inline code, bold text
-- ✅ Configurable token limits, chunking, and cooldown periods
-- ✅ Debug mode for verbose logging
-- ✅ Token usage tracking in logs
+- **Local semantic search** using `@xenova/transformers` embeddings
+- Channel-specific documentation from Markdown files
+- AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
+- Two interaction modes: @mentions (public) and ambient (private ephemeral)
+- **Slash commands** for user preferences (`/dasilva help`, `/dasilva silence`, etc.)
+- **Admin configuration via Slack** - Subscribe/unsubscribe channels without server access
+- **Hot reload** - Channel changes take effect immediately (no restart needed)
+- Smart question detection - only ambient mode responds to actual questions
+- Per-user rate limiting to prevent spam (ambient mode only)
+- Ephemeral messages for ambient responses (only visible to questioner)
+- Public threaded replies for @mentions
+- **Slack formatting support** - proper code blocks, inline code, bold text
+- Configurable token limits, chunking, and cooldown periods
+- Debug mode for verbose logging
+- Token usage tracking in logs
 
 ### Smart Filtering (Ambient Mode Only)
 - Only responds to messages that look like questions (ends with `?`, starts with question words, contains help keywords)
@@ -56,7 +56,8 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 - **Content files** (all other `.md` files) - Chunked and semantically searched
 - Documentation loaded and embedded at startup
 - Semantic search finds relevant chunks based on question meaning
-- Easy to update - just edit markdown files and restart
+- **Canvas-based file upload** - Admins can upload .md/.txt files to designated Slack canvas for automatic ingestion
+- Easy to update - just edit markdown files and restart, or upload via Slack canvas
 
 ### Anti-Hallucination
 - Instructions guide the model to be helpful but accurate
@@ -65,23 +66,12 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 
 ## Current Implementation Status
 
-This bot is currently deployed and actively serving **two channels**:
+This bot uses a directory-based configuration where each subscribed channel has its own folder at `channels/<channelId>/`.
 
-1. **Engineering Channel** - 109 lines of documentation
-   - Code review and testing best practices
-   - Git workflow and database migration standards
-   - Security practices and documentation requirements
-
-2. **PingOne Protect Internal Channel** - 1,959 lines of documentation
-   - PingOne Protect fraud prevention service overview
-   - Risk predictors and evaluation mechanics
-   - Default risk policy and integration mechanisms
-
-**Recent Updates** (from git history):
-- ✅ Added ESLint for code quality and consistency
-- ✅ Implemented chunk-based architecture with improved output formatting
-- ✅ Enhanced logging and token usage tracking
-- ✅ Refined question detection and rate limiting
+**Recent Updates**:
+- Simplified channel configuration (directory-based, no JSON config file)
+- Removed emoji from all user-facing messages
+- Streamlined admin commands (subscribe/leave)
 
 ## Project Structure
 
@@ -89,7 +79,7 @@ This bot is currently deployed and actively serving **two channels**:
 dasilva/
 ├── app.js                           # Main application
 ├── user-preferences.js              # User preference management (silence, cooldown)
-├── channel-config.js                # Channel configuration management (CRUD operations)
+├── channel-config.js                # Channel configuration (directory-based)
 ├── modal-definitions.js             # Slack Block Kit modal definitions
 ├── package.json                     # Dependencies and scripts
 ├── package-lock.json                # Locked dependency versions
@@ -98,20 +88,11 @@ dasilva/
 ├── .gitignore                      # Git ignore rules
 ├── eslint.config.js                # ESLint configuration
 ├── README.md                       # This file
-└── docs/
-    ├── channel-config.json         # Channel-to-documentation mapping (gitignored)
-    ├── channel-config.json.example # Configuration template
-    ├── engineering/                # Engineering team documentation
-    │   ├── _instructions.md        # Always-included system instructions
-    │   ├── Engineering - Best Practices.md
-    │   └── Engineering - LLM Overides.md
-    └── pingone-protect-internal/   # PingOne Protect team documentation
-        ├── _instructions.md        # Always-included system instructions
-        ├── PingOne Protect - Best Practices (Internal).md
-        └── PingOne Protect - LLM Overides.md
+└── channels/                        # Channel documentation directories
+    └── <channelId>/                 # One directory per subscribed channel
+        ├── _instructions.md         # Channel-specific instructions (always included)
+        └── *.md                     # Other documentation files (semantically searched)
 ```
-
-**Current Documentation**: 2,068 lines across 6 markdown files for 2 channels
 
 ## Setup
 
@@ -172,6 +153,8 @@ DEBUG_MODE=false
    - `chat:write`
    - `channels:read`
    - `channels:history`
+   - `files:read` (for canvas file uploads)
+   - `canvases:read` (for canvas file uploads)
 
 3. **Slash Commands**:
    - Create a new slash command: `/dasilva`
@@ -187,38 +170,30 @@ DEBUG_MODE=false
    - Subscribe to bot events:
      - `app_mention`
      - `message.channels`
+     - `file_shared` (for canvas file uploads)
 
 6. Invite the bot to channels: `/invite @dasilva` in each channel
 
 ### Channel Configuration
 
-1. Get your Slack channel IDs:
+Channels are configured by directory presence. Each subscribed channel has a folder at `channels/<channelId>/`.
+
+**Option 1: Subscribe via Slack (recommended)**
+1. Invite the bot to a channel: `/invite @dasilva`
+2. Run `/dasilva subscribe` in that channel
+3. The bot creates `channels/<channelId>/` automatically
+4. Add your documentation files to that folder
+
+**Option 2: Manual setup**
+1. Get your Slack channel ID:
    - Right-click channel → "View channel details" → Copy Channel ID
 
-2. Create `docs/channel-config.json` from the example:
+2. Create a channel folder:
 ```bash
-cp docs/channel-config.json.example docs/channel-config.json
+mkdir -p channels/C01234ABCDE
 ```
 
-3. Edit `docs/channel-config.json`:
-```json
-{
-  "channels": {
-    "C01234ABCD": {
-      "name": "product-team",
-      "docsFolder": "product-team",
-      "instructionsFile": "_instructions.md"
-    }
-  }
-}
-```
-
-4. Create your documentation folder:
-```bash
-mkdir -p docs/product-team
-```
-
-5. Create your instructions file `docs/product-team/_instructions.md`:
+3. Create your instructions file `channels/C01234ABCDE/_instructions.md`:
 ```markdown
 # Product Team Assistant
 
@@ -236,14 +211,14 @@ Use Slack's formatting syntax:
 Be direct and helpful. Don't fabricate information not in the docs.
 ```
 
-6. Add your content files:
-   - Create `.md` files: `docs/product-team/overview.md`, `features.md`, etc.
+4. Add your content files:
+   - Create `.md` files: `channels/C01234ABCDE/overview.md`, `features.md`, etc.
    - All `.md` files except `_instructions.md` will be chunked and semantically searched
    - `_instructions.md` is always included with every request
 
-### Admin Configuration via Slack Modals
+### Admin Configuration via Slack
 
-Admins can configure channels directly from Slack using interactive modals instead of manually editing configuration files.
+Admins can configure channels directly from Slack without server access.
 
 #### Setting Up Admin Users
 
@@ -261,63 +236,36 @@ ADMIN_USERS=U01234ABCDE,U56789FGHIJ
 
 Admin users have access to additional slash commands:
 
-- **`/dasilva addchannel`** - Opens an interactive modal to add a new channel configuration
-  - Fill in: Channel ID, Channel Name, Docs Folder, Instructions File
-  - Validates input and auto-reloads the channel (no bot restart needed)
+- **`/dasilva subscribe`** - Subscribe the current channel
+  - Creates `channels/<channelId>/` directory automatically
+  - Channel is ready for documentation immediately
 
-- **`/dasilva editchannel <channel_id>`** - Opens a modal to edit an existing channel
-  - Example: `/dasilva editchannel C0AB1P97UBB`
-  - Pre-fills current values for easy editing
-  - Hot-reloads the channel after saving
+- **`/dasilva leave`** - Unsubscribe the current channel
+  - Opens a confirmation modal (requires typing channel ID to confirm)
+  - Deletes the channel directory and all its documentation
 
-- **`/dasilva deletechannel <channel_id>`** - Opens a confirmation modal to delete a channel
-  - Example: `/dasilva deletechannel C0AB1P97UBB`
-  - Requires confirmation before deletion
-  - Note: Does not delete documentation files, only removes from configuration
-
-- **`/dasilva listchannels`** - Shows all configured channels with their settings
+- **`/dasilva list`** - Shows all configured channels
 
 #### How It Works
 
-1. Admin runs `/dasilva addchannel` in Slack
-2. An interactive form appears with input fields
-3. Admin fills in:
-   - **Channel ID** (e.g., `C0AB1P97UBB` - find in channel details)
-   - **Channel Name** (e.g., `engineering` - human-readable identifier)
-   - **Docs Folder** (e.g., `engineering` - folder inside `/docs` that must exist)
-   - **Instructions File** (e.g., `_instructions.md` - system instructions file)
-4. On submit, the bot:
-   - Validates all inputs (channel ID format, folder exists, etc.)
-   - Saves to `docs/channel-config.json`
-   - Hot-reloads the channel documentation (no restart needed)
-   - Shows success or error messages
-
-#### Validation & Error Handling
-
-The system performs comprehensive validation:
-- Channel ID format must match Slack's pattern (`C` followed by 10 alphanumeric characters)
-- Channel IDs cannot be duplicated
-- Documentation folder must exist before adding channel
-- All required fields must be filled
-- Inline error messages appear in the modal for invalid inputs
+1. Admin invites the bot to a channel: `/invite @dasilva`
+2. Admin runs `/dasilva subscribe` in that channel
+3. The bot creates a folder at `channels/<channelId>/`
+4. Admin adds documentation:
+   - Upload `.md` files directly via Slack (admin only)
+   - Or add files to `channels/<channelId>/` on the server
+5. The bot automatically embeds new documentation (no restart needed)
 
 #### Hot Reload
 
-After adding or editing a channel, the bot automatically:
-- Reloads the channel configuration from disk
-- Re-processes all documentation files
+After adding documentation, the bot automatically:
+- Re-processes all markdown files
 - Regenerates embeddings for semantic search
 - Updates in-memory cache
 
-No bot restart required! The channel is ready to use immediately.
+No bot restart required! Documentation is available immediately.
 
 #### Troubleshooting
-
-**"Folder does not exist" error:**
-```bash
-# Create the documentation folder first
-mkdir -p docs/your-channel-name
-```
 
 **"You must be an admin" message:**
 - Verify your Slack user ID is in the `ADMIN_USERS` environment variable
@@ -339,7 +287,7 @@ In addition to the basic Slack app setup, admin features require:
 
 2. **Slash Commands** (update usage hint):
    - Update `/dasilva` command usage hint to include admin commands:
-   - Usage Hint: `help | silence | unsilence | cooldown <minutes> | addchannel | editchannel <id> | deletechannel <id> | listchannels`
+   - Usage Hint: `help | silence | unsilence | cooldown <minutes> | subscribe | leave | list`
 
 ### Running the Bot
 
@@ -408,6 +356,43 @@ Disables cooldown (instant responses).
 - Settings are **global** - they apply across all channels where the bot is active
 - Custom cooldowns and silence preferences **persist** across bot restarts
 
+## Uploading Documentation via Slack Canvas
+
+Admins can upload documentation directly through Slack using Canvas folders, without needing server access.
+
+### Setup
+
+1. **Upload files to the canvas**:
+   - Upload `.md` or `.txt` files to the channel
+   - The bot will automatically:
+     - Detect the upload (admin users only)
+     - Download the file
+     - Save it to the channel's docs folder
+     - Re-embed the documentation
+     - Confirm with a message in the channel
+
+### Upload Requirements
+
+- **Admin only**: Only users listed in `ADMIN_USERS` env variable can upload
+- **Supported formats**: `.md`, `.txt`, `.markdown`, `.text` files only
+- **Automatic processing**: File is immediately processed and made available to the bot
+
+### Example Workflow
+
+```
+1. Admin uploads "new-feature.md" to the channel
+2. Bot detects upload and processes it
+3. Bot posts: "Successfully added documentation: new-feature.md"
+4. Documentation is immediately available for queries
+```
+
+### Troubleshooting Canvas Uploads
+
+- **Nothing happens**: Check that you're an admin (`ADMIN_USERS` in .env)
+- **File type error**: Only `.md` and `.txt` files are supported
+- **Permission error**: Ensure bot has `files:read` and `canvases:read` scopes
+- **Events subscriptions**: Subscribe to bot events `file_shared`
+
 ## Configuration Options
 
 | Variable | Default | Description |
@@ -436,14 +421,14 @@ Disables cooldown (instant responses).
 
 ## Known Limitations (MVP)
 
-- ❌ **No conversation memory** - Bot only sees the current message, not chat history
-- ❌ **No thread context** - Cannot reference "the previous message"
-- ❌ **In-memory rate limiting** - Resets on restart
-- ❌ **Single-instance only** - No distributed deployment support
-- ❌ **No request verification** - Trusts all Slack requests (security risk)
-- ❌ **No message editing** - Cannot update responses
-- ❌ **No analytics** - No tracking of usage or performance
-- ⚠️ **Startup time** - 30-60 seconds to load embedding model and process docs
+- **No conversation memory** - Bot only sees the current message, not chat history
+- **No thread context** - Cannot reference "the previous message"
+- **In-memory rate limiting** - Resets on restart
+- **Single-instance only** - No distributed deployment support
+- **No request verification** - Trusts all Slack requests (security risk)
+- **No message editing** - Cannot update responses
+- **No analytics** - No tracking of usage or performance
+- **Startup time** - 30-60 seconds to load embedding model and process docs
 
 ## Production TODOs
 
@@ -467,7 +452,7 @@ Disables cooldown (instant responses).
 - [ ] **Analytics** - Track questions, responses, channels
 
 ### Medium Priority (UX Improvements)
-- [x] **User slash commands** - `/dasilva` commands for user preferences
+- **User slash commands** - `/dasilva` commands for user preferences (done)
 - [ ] **Typing indicators** - Show bot is "thinking"
 - [ ] **Reaction-based controls** - Let users dismiss/retry with emoji reactions
 - [ ] **Admin commands** - Additional slash commands for managing bot (reload docs, stats, etc.)
@@ -506,10 +491,10 @@ Ensure all variables from `.env` are set in your hosting platform's environment 
 
 ### Bot doesn't respond
 1. Check bot is invited to the channel: `/invite @dasilva`
-2. Verify channel ID in `docs/channel-config.json`
+2. Verify channel is subscribed: `/dasilva list` (admin only)
 3. Check logs for errors: `DEBUG_MODE=true`
 4. Verify Slack Event Subscriptions URL is correct
-5. Check that docs folder exists and matches config
+5. Check that `channels/<channelId>/` folder exists with documentation
 
 ### Empty responses from reasoning models
 - **Increase `MAX_COMPLETION_TOKENS`** - Reasoning models (gpt-5-mini/nano) use tokens for thinking

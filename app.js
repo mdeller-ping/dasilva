@@ -282,30 +282,30 @@ app.post('/slack/commands', async (req, res) => {
 I monitor specific channels and help answer questions.
 
 *How I responsd:*
-• *@mention me* - I reply *publicly* in the channel
-• *Ask a question in the channel* - I may reply *privately* (DM) to avoid channel spam and not discourage participation
+- *@mention me* - I reply *publicly* in the channel
+- *Ask a question in the channel* - I may reply *privately* (DM) to avoid channel spam and not discourage participation
 
-#What do I know:*
-• I’m trained on internal and external documentation relevant to this channel’s topics
+*What do I know:*
+- I’m trained on internal and external documentation relevant to this channel’s topics
 
 *Slash Commands:*
-• \`/dasilva help\` - Show this message
-• \`/dasilva silence\` - Pause private (ambient) responses
-• \`/dasilva unsilence\` - Resume private responses
-• \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
+- \`/dasilva help\` - Show this message
+- \`/dasilva silence\` - Pause private (ambient) responses
+- \`/dasilva unsilence\` - Resume private responses
+- \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
 
 *Your current settings:*
-• Silenced: ${silencedStatus}
-• Cooldown: ${cooldownStatus}`;
+- Silenced: ${silencedStatus}
+- Cooldown: ${cooldownStatus}`;
 
       // Add admin commands to help if user is admin
       if (isAdmin(user_id)) {
         responseText += `
 
 *Admin Commands:*
-• \`/dasilva subscribe\` - Add current channel to configuration
-• \`/dasilva leave\` - Remove current channel from configuration
-• \`/dasilva list\` - List all configured channels`;
+- \`/dasilva subscribe\` - Add current channel to configuration
+- \`/dasilva leave\` - Remove current channel from configuration
+- \`/dasilva list\` - List all configured channels`;
       }
     } else if (args === 'silence') {
       userPrefs.updateUserPreference(user_id, { silenced: true });

@@ -117,7 +117,12 @@ npm install
 
 3. Create `.env` from the example:
 ```bash
-cp .env.example .env
+cp env.example .env
+```
+
+5. Start the bot:
+```bash
+npm start
 ```
 
 4. Configure environment variables in `.env`:
@@ -146,15 +151,15 @@ DEBUG_MODE=false
 
 ### Setting Up Admin Users
 
-1. Add admin Slack user IDs to your `.env` file:
+1. Find your Slack user ID:
+   - Open your profile in Slack
+   - Select "..." → "Copy member ID"
+
+2. Add admin Slack user IDs to your `.env` file:
 ```bash
 # Admin users who can configure channels (comma-separated Slack user IDs)
 ADMIN_USERS=U01234ABCDE,U56789FGHIJ
 ```
-
-2. Find your Slack user ID:
-   - Click your profile in Slack
-   - Select "Profile" → "More" → "Copy Member ID"
 
 ### Slack App Configuration
 

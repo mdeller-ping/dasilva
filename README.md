@@ -106,7 +106,7 @@ dasilva/
 
 1. Clone the repository:
 ```bash
-git clone <repo-url>
+git clone https://github.com/mdeller-ping/dasilva
 cd dasilva
 ```
 
@@ -125,46 +125,15 @@ cp env.example .env
 npm start
 ```
 
-4. Configure environment variables in `.env`:
-```bash
-PORT=3000
-SLACK_BOT_TOKEN=xoxb-your-token-here
-SLACK_SIGNING_SECRET=your-signing-secret-here
-OPENAI_API_KEY=sk-your-openai-key-here
-
-# Model configuration
-MODEL=gpt-5-mini
-
-# Reasoning models need more tokens (they use tokens for internal thinking)
-MAX_COMPLETION_TOKENS=4000
-
-# Rate limiting
-RESPONSE_COOLDOWN_SECONDS=300
-
-# Document chunking
-CHUNK_SIZE=2000
-MAX_CHUNKS=5
-
-# Debug logging
-DEBUG_MODE=false
-```
-
-### Setting Up Admin Users
-
-1. Find your Slack user ID:
-   - Open your profile in Slack
-   - Select "..." → "Copy member ID"
-
-2. Add admin Slack user IDs to your `.env` file:
-```bash
-# Admin users who can configure channels (comma-separated Slack user IDs)
-ADMIN_USERS=U01234ABCDE,U56789FGHIJ
-```
+6. Note <https://YOUR.BOT.URL>
 
 ### Slack App Configuration
 
-1. Create a new Slack app at https://api.slack.com/apps
+1. Create a new Slack App from Manifest at https://api.slack.com/apps
 
+2. Choose your workspace
+
+3. Paste in the manifest and customize with your <https://YOUR.BOT.URL>
 ```json
 {
     "display_information": {
@@ -178,7 +147,7 @@ ADMIN_USERS=U01234ABCDE,U56789FGHIJ
         "slash_commands": [
             {
                 "command": "/dasilva",
-                "url": "https://<YOUR.URL>/slack/commands",
+                "url": "<https://YOUR.BOT.URL>/slack/commands",
                 "description": "Interact with Dasilva bot",
                 "usage_hint": "help | silence | unsilence | cooldown <minutes>",
                 "should_escape": false
@@ -204,7 +173,7 @@ ADMIN_USERS=U01234ABCDE,U56789FGHIJ
     },
     "settings": {
         "event_subscriptions": {
-            "request_url": "https://<YOUR.URL>/slack/events",
+            "request_url": "<https://YOUR.BOT.URL>/slack/events",
             "bot_events": [
                 "app_mention",
                 "file_shared",
@@ -214,7 +183,7 @@ ADMIN_USERS=U01234ABCDE,U56789FGHIJ
         },
         "interactivity": {
             "is_enabled": true,
-            "request_url": "https://<YOUR.URL>/slack/interactions"
+            "request_url": "<https://YOUR.BOT.URL>/slack/interactions"
         },
         "org_deploy_enabled": false,
         "socket_mode_enabled": false,
@@ -223,53 +192,47 @@ ADMIN_USERS=U01234ABCDE,U56789FGHIJ
 }
 ```
 
-2. Install the app to your workspace and copy the Bot User OAuth Token
+4. Note Slack's Signing Secret (Basic Information - App Credentials)
+
+5. OAuth & Permissions - Install to your workspace
+
+6. Select Channel for Webhook (create if necessary), click Allow
+
+7. Note Slack's Bot User OAuth Token (OAuth & Permissions - OAuth Tokens)
+
+4. Configure environment variables in `.env`:
+```bash
+SLACK_BOT_TOKEN=xoxb-your-token-here-from-above
+SLACK_SIGNING_SECRET=your-signing-secret-here-from-above
+OPENAI_API_KEY=sk-your-openai-key-here
+```
+
+### Setting Up Admin Users
+
+1. Find your Slack user ID:
+   - Open your profile in Slack
+   - Select "..." → "Copy member ID"
+
+2. Add admin Slack user IDs to your `.env` file:
+```bash
+# Admin users who can configure channels (comma-separated Slack user IDs)
+ADMIN_USERS=U01234ABCDE,U56789FGHIJ
+```
 
 ### Channel Configuration
 
 Channels are configured by directory presence. Each subscribed channel has a folder at `channels/<channelId>/`.
 
-**Option 1: Subscribe via Slack (recommended)**
+**Subscribe to Slack Channel**
+
 1. Invite the bot to a channel: `/invite @dasilva`
 2. Run `/dasilva subscribe` in that channel
 3. The bot creates `channels/<channelId>/` automatically
-4. Add your documentation files to that folder
 
-**Option 2: Manual setup**
-1. Get your Slack channel ID:
-   - Right-click channel → "View channel details" → Copy Channel ID
+**Add Documentation**
 
-2. Create a channel folder:
-```bash
-mkdir -p channels/C01234ABCDE
-```
-
-3. Create your instructions file `channels/C01234ABCDE/_instructions.md`:
-```markdown
-# Product Team Assistant
-
-You are a helpful expert on our product. Answer questions clearly based on the information provided.
-
-## Response Formatting for Slack
-
-Use Slack's formatting syntax:
-- Code blocks for JSON/code with ```language
-- Inline code for technical terms with `backticks`
-- Bold for emphasis with *asterisks*
-
-## Guidelines
-
-Be direct and helpful. Don't fabricate information not in the docs.
-```
-
-4. Add your content files:
-   - Create `.md` files: `channels/C01234ABCDE/overview.md`, `features.md`, etc.
-   - All `.md` files except `_instructions.md` will be chunked and semantically searched
-   - `_instructions.md` is always included with every request
-
-### Admin Configuration via Slack
-
-Admins can configure channels directly from Slack without server access.
+1. In Slack channel, Upload File: _instructions.md
+2. In Slack channel, Upload File: Your custom documentation as .txt or .md
 
 #### Admin Slash Commands
 
@@ -284,16 +247,6 @@ Admin users have access to additional slash commands:
   - Deletes the channel directory and all its documentation
 
 - **`/dasilva list`** - Shows all configured channels
-
-#### How It Works
-
-1. Admin invites the bot to a channel: `/invite @dasilva`
-2. Admin runs `/dasilva subscribe` in that channel
-3. The bot creates a folder at `channels/<channelId>/`
-4. Admin adds documentation:
-   - Upload `.md` files directly via Slack (admin only)
-   - Or add files to `channels/<channelId>/` on the server
-5. The bot automatically embeds new documentation (no restart needed)
 
 #### Hot Reload
 

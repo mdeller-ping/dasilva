@@ -14,8 +14,8 @@ env.local
 channel-config.json
 user-preferences.json
 
-# Documentation - keep folder, exclude contents
-docs/pingone-protect-internal
+# channels - exclude folder for channel specific documentation
+channels/
 
 # macOS
 .DS_Store

@@ -12,20 +12,20 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 ## Technologies
 
 **Runtime & Server**
-- Node.js (v18+)
-- Express.js (v5.2.1) - Web framework for HTTP endpoints
+- Node.js
+- Express.js - Web framework for HTTP endpoints
 
 **AI & ML**
-- OpenAI API (@openai v6.16.0) - gpt-5-mini or gpt-5-nano models
-- Xenova/transformers (v2.17.1) - Local semantic embeddings (Hugging Face Transformers.js)
+- OpenAI API - gpt-5-mini or gpt-5-nano models
+- Xenova/transformers - Local semantic embeddings (Hugging Face Transformers.js)
 
 **Slack Integration**
-- @slack/web-api (v7.13.0) - Slack API client for posting messages, reading channels
+- @slack/web-api - Slack API client for posting messages, reading channels
 
 **Development Tools**
-- dotenv (v16.4.5) - Environment variable management
-- ESLint (v9.39.2) - Code linting and quality
-- Nodemon (v3.1.9) - Development hot-reload
+- dotenv  - Environment variable management
+- ESLint  - Code linting and quality
+- Nodemon - Development hot-reload
 
 ## Current Features (MVP)
 
@@ -83,11 +83,11 @@ dasilva/
 ├── modal-definitions.js             # Slack Block Kit modal definitions
 ├── package.json                     # Dependencies and scripts
 ├── package-lock.json                # Locked dependency versions
-├── .env                            # Environment variables (gitignored, contains API keys)
+├── .env                             # Environment variables (gitignored, contains API keys)
 ├── env.example                      # Template for environment configuration
-├── .gitignore                      # Git ignore rules
-├── eslint.config.js                # ESLint configuration
-├── README.md                       # This file
+├── .gitignore                       # Git ignore rules
+├── eslint.config.js                 # ESLint configuration
+├── README.md                        # This file
 └── channels/                        # Channel documentation directories
     └── <channelId>/                 # One directory per subscribed channel
         ├── _instructions.md         # Channel-specific instructions (always included)
@@ -328,7 +328,7 @@ Sets cooldown to 10 minutes.
 ```
 /dasilva cooldown 0
 ```
-Disables cooldown (instant responses).
+Disables cooldown (responses to all questions).
 
 ### Command Notes
 

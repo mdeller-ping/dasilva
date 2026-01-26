@@ -375,12 +375,12 @@ I monitor specific channels and help answer questions.
           clearTimeout(safetyTimeout);
           res.json({
             response_type: 'ephemeral',
-            text: 'Opening delete confirmation...'
+            text: 'Opening leave confirmation...'
           });
 
           // Open modal asynchronously (don't await here)
-          openDeleteChannelModal(trigger_id, channelId).catch(error => {
-            console.error('Error opening delete channel modal:', error);
+          openLeaveChannelModal(trigger_id, channelId).catch(error => {
+            console.error('Error opening leave channel modal:', error);
           });
           return;
         }
@@ -487,8 +487,8 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
     if (type === 'view_submission') {
       const callback_id = view.callback_id;
 
-      if (callback_id === 'delete_channel_modal') {
-        const result = await handleDeleteChannelSubmission(view, user.id);
+      if (callback_id === 'leave_channel_modal') {
+        const result = await handleLeaveChannelSubmission(view, user.id);
         return res.json(result);
       }
     }
@@ -508,20 +508,20 @@ app.post('/slack/interactions', express.urlencoded({ extended: true }), async (r
 });
 
 // Modal opener functions
-async function openDeleteChannelModal(triggerId, channelId) {
+async function openLeaveChannelModal(triggerId, channelId) {
   try {
     await slackClient.views.open({
       trigger_id: triggerId,
-      view: modalDefs.getDeleteChannelModal(channelId)
+      view: modalDefs.leaveChannelModal(channelId)
     });
   } catch (error) {
-    console.error('Error opening delete channel modal:', error);
+    console.error('Error opening leave channel modal:', error);
     throw error;
   }
 }
 
 // Modal submission handlers
-async function handleDeleteChannelSubmission(view, userId) {
+async function handleLeaveChannelSubmission(view, userId) {
   // Extract channel ID from private_metadata
   const channelId = view.private_metadata;
 
@@ -539,7 +539,7 @@ async function handleDeleteChannelSubmission(view, userId) {
   const values = view.state.values;
   const confirmationInput = values.confirmation_block.confirmation_input.value.trim();
 
-  console.log(`Admin ${userId} attempting to delete channel: ${channelId}`);
+  console.log(`Admin ${userId} attempting to leave channel: ${channelId}`);
 
   // Validate that user typed the exact channel ID
   if (confirmationInput !== channelId) {

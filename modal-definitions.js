@@ -5,18 +5,18 @@
 /**
  * Get modal for confirming channel deletion
  */
-function getDeleteChannelModal(channelId) {
+function leaveChannelModal(channelId) {
   return {
     type: 'modal',
-    callback_id: 'delete_channel_modal',
+    callback_id: 'leave_channel_modal',
     private_metadata: channelId,
     title: {
       type: 'plain_text',
-      text: 'Delete Channel'
+      text: 'Leave Channel'
     },
     submit: {
       type: 'plain_text',
-      text: 'Delete'
+      text: 'Leave'
     },
     close: {
       type: 'plain_text',
@@ -34,7 +34,7 @@ function getDeleteChannelModal(channelId) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `You are about to delete the configuration for channel \`${channelId}\`.\n\nThis will remove all documentation in \`channels/${channelId}/\`.`
+          text: `Dasilva will no longer monitor channel \`${channelId}\`.\n\nThis will remove all indexed documentation from the bot.`
         }
       },
       {
@@ -65,5 +65,5 @@ function getDeleteChannelModal(channelId) {
 }
 
 module.exports = {
-  getDeleteChannelModal
+  leaveChannelModal
 };

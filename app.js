@@ -22,6 +22,7 @@ const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 2000; // Characters per c
 const MAX_CHUNKS = parseInt(process.env.MAX_CHUNKS) || 5; // Number of chunks to include
 const HELP_FOOTER = '\n\n_Type `/dasilva help` for more information_';
 const ADMIN_USERS = (process.env.ADMIN_USERS || '').split(',').map(id => id.trim()).filter(Boolean);
+const AMBIENT_MODE = process.env.AMBIENT_MODE === 'true';
 
 // Helper for debug logging
 function debug(...args) {
@@ -291,7 +292,7 @@ I monitor specific channels and help answer questions.
 *Slash Commands:*
 - \`/dasilva help\` - Show this message
 - \`/dasilva silence\` - Pause private (ambient) responses
-- \`/dasilva unsilence\` - Resume private responses
+- \`/dasilva unsilence\` - Allow private (ambient) responses
 - \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
 
 *Your current settings:*
@@ -309,11 +310,11 @@ I monitor specific channels and help answer questions.
       }
     } else if (args === 'silence') {
       userPrefs.updateUserPreference(user_id, { silenced: true });
-      responseText = "You've been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
+      responseText = "Dasilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
       console.log(`User ${user_id} enabled silence mode via slash command`);
     } else if (args === 'unsilence') {
       userPrefs.updateUserPreference(user_id, { silenced: false });
-      responseText = "Welcome back! You'll now receive ambient responses when you ask questions.";
+      responseText = "You'll now receive ambient responses when you ask questions.";
       console.log(`User ${user_id} disabled silence mode via slash command`);
     } else if (args.startsWith('cooldown ')) {
       const minutesMatch = args.match(/^cooldown\s+(\d+)$/);
@@ -673,6 +674,17 @@ async function handleMention(event) {
     const allChunks = channelDocs[channel] || [];
     const relevantChunks = await findRelevantChunks(allChunks, userMessage, MAX_CHUNKS);
     
+    if (allChunks.length === 0) {
+      // No documents, skip
+      console.log(`Skipping - no channel ${channel} documents`);
+      await slackClient.chat.postMessage({
+        channel: channel,
+        thread_ts: ts,
+        text: "Sorry, I have not been trained for this channel yet."
+      });
+      return;
+    }
+
     debug(`Found ${relevantChunks.length} relevant chunks out of ${allChunks.length} total`);
     
     const docsContext = relevantChunks.length > 0
@@ -752,8 +764,11 @@ async function handleChannelMessage(event) {
     const config = channelConfigModule.getChannel(channel);
     if (!config) {
       // Silently ignore messages from unconfigured channels
+      debug(`Skipping - channel ${channel} is not subscribed`);
       return;
     }
+
+    debug(`Ambient Mode: ${AMBIENT_MODE}`)
 
     // Check if user has silenced themselves
     if (userPrefs.isUserSilenced(user)) {
@@ -782,6 +797,12 @@ async function handleChannelMessage(event) {
     const allChunks = channelDocs[channel] || [];
     const relevantChunks = await findRelevantChunks(allChunks, text, MAX_CHUNKS);
     
+    if (allChunks.length === 0) {
+      // No documents, skip
+      console.log(`Skipping - no channel ${channel} documents`);
+      return;
+    }
+
     debug(`Found ${relevantChunks.length} relevant chunks out of ${allChunks.length} total`);
     
     const docsContext = relevantChunks.length > 0

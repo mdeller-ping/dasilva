@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const AMBIENT_MODE = process.env.AMBIENT_MODE === 'true';
 
 const PREFS_FILE = path.join(__dirname, 'user-preferences.json');
 
@@ -91,7 +92,7 @@ function getUserPreference(userId) {
 
   if (!prefs.users[userId]) {
     prefs.users[userId] = {
-      silenced: false,
+      silenced: !AMBIENT_MODE,
       customCooldown: null,
       lastUpdated: new Date().toISOString()
     };
@@ -108,7 +109,7 @@ function updateUserPreference(userId, updates) {
 
   if (!prefs.users[userId]) {
     prefs.users[userId] = {
-      silenced: false,
+      silenced: !AMBIENT_MODE,
       customCooldown: null,
       lastUpdated: new Date().toISOString()
     };

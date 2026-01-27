@@ -198,6 +198,23 @@ SLACK_SIGNING_SECRET=your-signing-secret-here-from-above
 OPENAI_API_KEY=sk-your-openai-key-here
 ```
 
+## Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | 3000 | Server port |
+| `MODEL` | gpt-5-mini | OpenAI model (gpt-5-mini or gpt-5-nano) |
+| `MAX_COMPLETION_TOKENS` | 4000 | Max tokens for response (reasoning models need 4000+) |
+| `RESPONSE_COOLDOWN_SECONDS` | 300 | Cooldown between ambient responses to same user (5 min) |
+| `CHUNK_SIZE` | 2000 | Characters per documentation chunk |
+| `MAX_CHUNKS` | 5 | Number of chunks to include in context |
+| `DEBUG_MODE` | false | Enable verbose logging including token counts |
+| `AMBIENT_MODE` | false | when false, users must opt in via unsilence |
+| `ADMIN_USERS` | | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
+| `OPENAI_API_KEY` | your-openai-key | replace with your OpenAI API Key |
+| `SLACK_BOT_TOKEN` | your-slack-bot-token | replace with your Slack Bot Token |
+| `SLACK_SIGNING_SECRET` | your-slack-signing-secret | Replace with your Slack Signing Secret |
+
 ### Setting Up Admin Users
 
 1. Find your Slack user ID:
@@ -336,7 +353,7 @@ Disables cooldown (responses to all questions).
 - Commands are **case-insensitive** - `/dasilva silence`, `/dasilva Silence`, and `/dasilva SILENCE` all work
 - Commands work in **any channel where the bot is installed**
 - All command responses are **ephemeral (private)** - only you see the response
-- Settings are **global** - they apply across all channels where the bot is active
+- User settings (Silence, Cooldown) are **global** - they apply across all channels where the bot is active
 - Custom cooldowns and silence preferences **persist** across bot restarts
 
 ## Uploading Documentation via Slack Canvas
@@ -368,6 +385,49 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 3. Bot posts: "Successfully added documentation: new-feature.md"
 4. Documentation is immediately available for queries
 ```
+
+## Troubleshooting
+
+### Bot doesn't respond
+1. Check bot is invited to the channel: `/invite @dasilva`
+2. Verify channel is subscribed: `/dasilva list` (admin only)
+3. Check logs for errors: `DEBUG_MODE=true`
+4. Verify Slack Event Subscriptions URL is correct
+5. Check that `channels/<channelId>/` folder exists with documentation
+
+### Empty responses from reasoning models
+- **Increase `MAX_COMPLETION_TOKENS`** - Reasoning models (gpt-5-mini/nano) use tokens for thinking
+- Set to at least 4000 tokens to allow room for reasoning + output
+- Check debug logs for `"reasoning_tokens"` usage
+- If `"content": ""` and `"finish_reason": "length"`, increase token limit
+
+### Bot responds twice to @mentions
+- Fixed in current version - bot now skips duplicate message events
+- If still happening, check Event Subscriptions aren't duplicated
+
+### Poor quality responses
+- Try increasing `MAX_CHUNKS` to include more context (e.g., 10)
+- Increase `CHUNK_SIZE` for larger context per chunk (e.g., 3000)
+- Check that `_instructions.md` has clear guidelines
+- Verify documentation is well-organized and clear
+
+### Startup is slow
+- Normal: 30-60 seconds to download embedding model and process docs
+- Model is cached after first run
+- Consider reducing doc size or number of chunks if too slow
+
+### Rate limiting issues
+- Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env`
+- Remember: rate limiting only applies to ambient mode, not @mentions
+- Check rate limit map isn't growing unbounded (add cleanup for production)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -am 'Add feature'`
+4. Push to branch: `git push origin feature-name`
+5. Submit a pull request
 
 ## Credits
 

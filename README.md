@@ -1,13 +1,9 @@
 # Dasilva - AI-Powered Slack Bot
 
-A channel-specific AI assistant for Slack that responds to questions based on custom documentation using local semantic search.
-
-## Overview
-
-Dasilva is a Slack bot that monitors configured channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
+Dasilva is a Slack bot that monitors subscribed channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
 
 1. **@mentions** - Public threaded responses when explicitly tagged (always responds)
-2. **Ambient listening** - Private ephemeral responses to questions in monitored channels (smart filtering)
+2. **Ambient listening** - Private ephemeral responses to public questions in subscribed channels
 
 ## Technologies
 
@@ -17,7 +13,7 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 
 **AI & ML**
 - OpenAI API - gpt-5-mini or gpt-5-nano models
-- Xenova/transformers - Local semantic embeddings (Hugging Face Transformers.js)
+- Xenova/transformers - Local semantic embeddings to minimize token size to OpenAI
 
 **Slack Integration**
 - @slack/web-api - Slack API client for posting messages, reading channels
@@ -48,7 +44,9 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 
 ### Smart Filtering (Ambient Mode Only)
 - Only responds to messages that look like questions (ends with `?`, starts with question words, contains help keywords)
+- Ambient responses are ephemeral (private) and won't clutter channels or discourage others from participating
 - Rate limits responses per user (default: 5 minutes cooldown)
+- Users must opt in via `/dasilva unsilence` when `AMBIENT_MODE=false`
 - @mentions bypass ALL filtering and cooldowns
 
 ### Documentation Management
@@ -56,22 +54,12 @@ Dasilva is a Slack bot that monitors configured channels and provides AI-powered
 - **Content files** (all other `.md` files) - Chunked and semantically searched
 - Documentation loaded and embedded at startup
 - Semantic search finds relevant chunks based on question meaning
-- **Canvas-based file upload** - Admins can upload .md/.txt files to designated Slack canvas for automatic ingestion
-- Easy to update - just edit markdown files and restart, or upload via Slack canvas
+- **Canvas-based file upload** - Admins can upload .md/.txt files to designated Slack channel for automatic ingestion
 
 ### Anti-Hallucination
 - Instructions guide the model to be helpful but accurate
 - Won't invent features or capabilities not in documentation
 - Proper Slack formatting for technical content
-
-## Current Implementation Status
-
-This bot uses a directory-based configuration where each subscribed channel has its own folder at `channels/<channelId>/`.
-
-**Recent Updates**:
-- Simplified channel configuration (directory-based, no JSON config file)
-- Removed emoji from all user-facing messages
-- Streamlined admin commands (subscribe/leave)
 
 ## Project Structure
 
@@ -88,6 +76,10 @@ dasilva/
 ├── .gitignore                       # Git ignore rules
 ├── eslint.config.js                 # ESLint configuration
 ├── README.md                        # This file
+├── LICENSE                          # Apache 2.0 License
+└── sample-docs/                     # Example channel documentation
+        ├── _instructions.md         # Sample instructions file, with anti hallucination
+        └── engineering.md           # Sample documentation for engineering team
 └── channels/                        # Channel documentation directories
     └── <channelId>/                 # One directory per subscribed channel
         ├── _instructions.md         # Channel-specific instructions (always included)

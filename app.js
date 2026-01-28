@@ -812,10 +812,13 @@ async function handleChannelMessage(event) {
       : 'No relevant documentation found.';
 
     // Build messages with instructions + documentation context
+    // For ambient messages, instruct the model to stay silent when unsure
+    const ambientGuidance = '\n\nIMPORTANT: This is an ambient channel message, NOT a direct question to you. Only respond if you are confident you can provide a helpful, accurate answer based on the available documentation. If you are not confident, or the documentation does not cover the topic, respond with exactly an empty message (no text at all). Do not apologize or explain that you cannot answer - just return nothing.';
+
     const messages = [
-      { 
-        role: "system", 
-        content: `${instructions}\n\n---\n\n# Available Documentation:\n\n${docsContext}`
+      {
+        role: "system",
+        content: `${instructions}\n\n---\n\n# Available Documentation:\n\n${docsContext}${ambientGuidance}`
       },
       { role: "user", content: text }
     ];
@@ -834,14 +837,9 @@ async function handleChannelMessage(event) {
     debug('Reply received:', reply);
     debug('Reply length:', reply?.length || 0);
 
-    // Safety check: ensure we have a reply
+    // If reply is empty, stay silent (low confidence or no relevant answer)
     if (!reply || reply.trim().length === 0) {
-      console.error('Empty reply from OpenAI');
-      await slackClient.chat.postEphemeral({
-        channel: channel,
-        user: user,
-        text: "Sorry, I wasn't able to generate a response. Could you try rephrasing your question?" + HELP_FOOTER
-      });
+      debug('Empty reply from OpenAI - staying silent');
       return;
     }
 

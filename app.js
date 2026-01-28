@@ -52,10 +52,12 @@ const openai = new OpenAI({
 });
 
 // Ensure channels directory exists on startup
-const channelsDir = path.join(__dirname, 'channels');
-if (!fs.existsSync(channelsDir)) {
-  fs.mkdirSync(channelsDir, { recursive: true });
-  console.log('Created channels directory');
+if (process.env.PERSISTENT_STORAGE) {
+  console.log(`Using persistent storage: ${process.env.PERSISTENT_STORAGE}`);
+}
+if (!fs.existsSync(channelConfigModule.CHANNELS_DIR)) {
+  fs.mkdirSync(channelConfigModule.CHANNELS_DIR, { recursive: true });
+  console.log(`Created channels directory: ${channelConfigModule.CHANNELS_DIR}`);
 }
 
 // This will be populated asynchronously
@@ -348,7 +350,7 @@ I monitor specific channels and help answer questions.
           const result = channelConfigModule.subscribe(channelId);
 
           if (result.success) {
-            responseText = `Channel <#${channelId}> configured successfully!\n\nChannel folder: \`channels/${channelId}\`\n\n_Add markdown files to the channel folder and I'll start using them. Use \`_instructions.md\` for system instructions._`;
+            responseText = `Channel <#${channelId}> configured successfully!\n\nChannel folder: \`${path.join(channelConfigModule.CHANNELS_DIR, channelId)}\`\n\n_Add markdown files to the channel folder and I'll start using them. Use \`_instructions.md\` for system instructions._`;
 
             // Reload channel asynchronously
             reloadChannel(channelId).then(reloaded => {
@@ -397,7 +399,7 @@ I monitor specific channels and help answer questions.
         } else {
           responseText = '*Configured Channels:*\n\n' +
             channels.map(([id]) =>
-              `• <#${id}> (\`${id}\`)\n  Path: \`channels/${id}\``
+              `• <#${id}> (\`${id}\`)\n  Path: \`${path.join(channelConfigModule.CHANNELS_DIR, id)}\``
             ).join('\n\n');
         }
       }

@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const AMBIENT_MODE = process.env.AMBIENT_MODE === 'true';
 
-const PREFS_FILE = path.join(__dirname, 'user-preferences.json');
+const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
+const PREFS_FILE = path.join(STORAGE_BASE, 'user-preferences.json');
 
 // In-memory cache
 let preferencesCache = null;
@@ -70,6 +71,10 @@ function loadPreferences() {
  */
 function savePreferences(preferences) {
   try {
+    const dir = path.dirname(PREFS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const data = JSON.stringify(preferences, null, 2);
     fs.writeFileSync(PREFS_FILE, data, 'utf8');
 

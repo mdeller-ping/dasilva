@@ -203,6 +203,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
 | `DEBUG_MODE` | false | Enable verbose logging including token counts |
 | `AMBIENT_MODE` | false | when false, users must opt in via unsilence |
 | `ADMIN_USERS` | | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
+| `PERSISTENT_STORAGE` |  | optional path to persistent storage |
 | `OPENAI_API_KEY` | your-openai-key | replace with your OpenAI API Key |
 | `SLACK_BOT_TOKEN` | your-slack-bot-token | replace with your Slack Bot Token |
 | `SLACK_SIGNING_SECRET` | your-slack-signing-secret | Replace with your Slack Signing Secret |

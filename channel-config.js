@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const CHANNELS_DIR = path.join(__dirname, 'channels');
+const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
+const CHANNELS_DIR = path.join(STORAGE_BASE, 'channels');
 const INSTRUCTIONS_FILE = '_instructions.md';
 
 /**

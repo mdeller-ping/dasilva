@@ -34,7 +34,7 @@ function leaveChannelModal(channelId) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `Dasilva will no longer monitor channel \`${channelId}\`.\n\nThis will remove all indexed documentation from the bot.`
+          text: `DaSilva will no longer monitor channel \`${channelId}\`.\n\nThis will remove all indexed documentation from the bot.`
         }
       },
       {

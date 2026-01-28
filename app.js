@@ -310,7 +310,7 @@ I monitor specific channels and help answer questions.
       }
     } else if (args === 'silence') {
       userPrefs.updateUserPreference(user_id, { silenced: true });
-      responseText = "Dasilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
+      responseText = "DaSilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
       console.log(`User ${user_id} enabled silence mode via slash command`);
     } else if (args === 'unsilence') {
       userPrefs.updateUserPreference(user_id, { silenced: false });

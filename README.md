@@ -1,6 +1,6 @@
-# Dasilva - AI-Powered Slack Bot
+# DaSilva - AI-Powered Slack Bot
 
-Dasilva is a Slack bot that monitors subscribed channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
+DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
 
 1. **@mentions** - Public threaded responses when explicitly tagged (always responds)
 2. **Ambient listening** - Private ephemeral responses to public questions in subscribed channels
@@ -107,7 +107,7 @@ npm start
 Navigate to <https://YOUR.BOT.URL>
 
 ```bash
-Dasilva is alive!
+DaSilva is alive!
 ```
 
 ### Slack App Configuration
@@ -120,18 +120,18 @@ Dasilva is alive!
 ```json
 {
     "display_information": {
-        "name": "Dasilva - Product Champion"
+        "name": "DaSilva - Product Champion"
     },
     "features": {
         "bot_user": {
-            "display_name": "Dasilva - Product Champion",
+            "display_name": "DaSilva - Product Champion",
             "always_online": false
         },
         "slash_commands": [
             {
                 "command": "/dasilva",
                 "url": "<https://YOUR.BOT.URL>/slack/commands",
-                "description": "Interact with Dasilva bot",
+                "description": "Interact with DaSilva bot",
                 "usage_hint": "help | silence | unsilence | cooldown <minutes>",
                 "should_escape": false
             }
@@ -412,14 +412,6 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 - Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env`
 - Remember: rate limiting only applies to ambient mode, not @mentions
 - Check rate limit map isn't growing unbounded (add cleanup for production)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit changes: `git commit -am 'Add feature'`
-4. Push to branch: `git push origin feature-name`
-5. Submit a pull request
 
 ## Credits
 

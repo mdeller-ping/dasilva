@@ -477,7 +477,13 @@ app.post('/slack/events', async (req, res) => {
   if (event && event.type === 'message' && event.subtype === 'file_share') {
     debug('File share message detected');
     if (event.files && event.files.length > 0) {
+      const allowedExtensions = ['md', 'txt', 'text', 'markdown'];
       for (const file of event.files) {
+        const ext = file.name?.split('.').pop().toLowerCase();
+        if (!ext || !allowedExtensions.includes(ext)) {
+          log(`[${event.channel}]: ignoring file upload with unsupported type: ${file.name || 'unknown'}`);
+          continue;
+        }
         await handleFileUpload({
           file_id: file.id,
           channel_id: event.channel,
@@ -504,10 +510,7 @@ app.post('/slack/events', async (req, res) => {
     await handleChannelMessage(event);
   }
 
-  // Handle file uploads
-  if (event && event.type === 'file_shared') {
-    await handleFileUpload(event);
-  }
+  // Note: file_shared events are handled above via file_share subtype
 });
 
 // Slack interactions endpoint (for modals)
@@ -726,10 +729,13 @@ async function handleMention(event) {
       : 'No relevant documentation found.';
 
     // Build messages with instructions + documentation context
+    // Instruct the model to decline answering when the documentation doesn't cover the topic
+    const mentionGuidance = '\n\nIMPORTANT: You must only answer based on the available documentation above. If the question is not covered by the documentation, or you are not confident you can provide an accurate answer from it, respond with exactly an empty message (no text at all). Do not guess or make up an answer.';
+
     const messages = [
-      { 
-        role: "system", 
-        content: `${instructions}\n\n---\n\n# Available Documentation:\n\n${docsContext}`
+      {
+        role: "system",
+        content: `${instructions}\n\n---\n\n# Available Documentation:\n\n${docsContext}${mentionGuidance}`
       },
       { role: "user", content: userMessage }
     ];
@@ -749,14 +755,13 @@ async function handleMention(event) {
     debug('Reply received:', reply);
     debug('Reply length:', reply?.length || 0);
 
-    // Safety check: ensure we have a reply
+    // If reply is empty, the model declined to answer (out of scope or low confidence)
     if (!reply || reply.trim().length === 0) {
-      logError('Empty reply from OpenAI');
-      logError('Full response:', JSON.stringify(completion, null, 2));
+      log(`[${channel}]: @mention response NOT sent for ${user} (out of scope or not relevant)`);
       await slackClient.chat.postMessage({
         channel: channel,
         thread_ts: ts,
-        text: "Sorry, I wasn't able to generate a response. Could you try rephrasing your question?"
+        text: "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel."
       });
       return;
     }

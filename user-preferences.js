@@ -33,7 +33,7 @@ function loadPreferences() {
           const data = fs.readFileSync(PREFS_FILE, 'utf8');
           preferencesCache = JSON.parse(data);
           lastModified = currentModified;
-          console.log('Loaded user preferences from file');
+          console.log('[GLOBAL]: Loaded user preferences from file');
         }
       } else {
         // Create default preferences if file doesn't exist

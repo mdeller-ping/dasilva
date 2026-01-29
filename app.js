@@ -29,7 +29,8 @@ const LOG_CHANNEL = process.env.LOG_CHANNEL || null;
 // Logging helpers: always log to console, optionally forward to a Slack channel
 function sendToLogChannel(text) {
   const timestamp = new Date().toISOString().replace('T', ' ').replace('Z', '');
-  slackClient.chat.postMessage({ channel: LOG_CHANNEL, text: `\`\`\`${timestamp}: ${text}\`\`\`` }).catch(err => {
+  const flat = text.replace(/\s+/g, ' ');
+  slackClient.chat.postMessage({ channel: LOG_CHANNEL, text: `\`${timestamp}: ${flat}\`` }).catch(err => {
     console.error(`[LOG_CHANNEL] Failed to post to ${LOG_CHANNEL}:`, err.message);
   });
 }
@@ -84,11 +85,11 @@ const openai = new OpenAI({
 
 // Ensure channels directory exists on startup
 if (process.env.PERSISTENT_STORAGE) {
-  log(`Using persistent storage: ${process.env.PERSISTENT_STORAGE}`);
+  log(`[GLOBAL]: Using persistent storage: ${process.env.PERSISTENT_STORAGE}`);
 }
 if (!fs.existsSync(channelConfigModule.CHANNELS_DIR)) {
   fs.mkdirSync(channelConfigModule.CHANNELS_DIR, { recursive: true });
-  log(`Created channels directory: ${channelConfigModule.CHANNELS_DIR}`);
+  log(`[GLOBAL]: Created channels directory: ${channelConfigModule.CHANNELS_DIR}`);
 }
 
 // This will be populated asynchronously
@@ -97,17 +98,17 @@ const channelInstructions = {}; // Always-included instructions per channel
 
 // Initialize embedder and load documentation
 async function initializeDocumentation() {
-  log('Initializing embedding model...');
+  log('[GLOBAL]: Initializing embedding model...');
   embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  log('Embedding model loaded!');
+  log('[GLOBAL]: Embedding model loaded!');
 
-  log('Loading and embedding documentation...');
+  log('[GLOBAL]: Loading and embedding documentation...');
 
   for (const [channelId, config] of channelConfigModule.getAllChannels()) {
     const channelPath = config.channelPath;
 
     if (!fs.existsSync(channelPath)) {
-      logWarn(`Warning: Channel folder not found: ${channelPath}`);
+      logWarn(`[${channelId}]: Warning: Channel folder not found: ${channelPath}`);
       continue;
     }
 
@@ -115,7 +116,7 @@ async function initializeDocumentation() {
     const instructionsPath = path.join(channelPath, channelConfigModule.INSTRUCTIONS_FILE);
     if (fs.existsSync(instructionsPath)) {
       channelInstructions[channelId] = fs.readFileSync(instructionsPath, 'utf-8');
-      log(`Loaded instructions for ${channelId}`);
+      log(`[${channelId}]: Loaded instructions for`);
     } else {
       channelInstructions[channelId] = 'Answer questions based only on the provided documentation.';
     }
@@ -124,18 +125,18 @@ async function initializeDocumentation() {
     const files = fs.readdirSync(channelPath)
       .filter(f => f.endsWith('.md') && f !== channelConfigModule.INSTRUCTIONS_FILE);
 
-    log(`Found ${files.length} markdown files in ${channelPath}:`, files);
+    log(`[${channelId}]: Found ${files.length} markdown files:`, files);
 
     const chunks = [];
 
     // Load and chunk files
     for (const file of files) {
       const filePath = path.join(channelPath, file);
-      log(`Reading file: ${filePath}`);
+      log(`[${channelId}]: Reading file: ${file}`);
       const content = fs.readFileSync(filePath, 'utf-8');
-      log(`  File length: ${content.length} characters`);
+      log(`[${channelId}]:   File length: ${content.length} characters`);
       const fileChunks = chunkText(content, CHUNK_SIZE);
-      log(`  Created ${fileChunks.length} chunks`);
+      log(`[${channelId}]:   Created ${fileChunks.length} chunks`);
 
       fileChunks.forEach((chunk, index) => {
         chunks.push({
@@ -146,20 +147,20 @@ async function initializeDocumentation() {
       });
     }
 
-    log(`Total chunks to embed: ${chunks.length}`);
+    log(`[${channelId}]: Total chunks to embed: ${chunks.length}`);
 
     // Generate embeddings for all chunks
-    log(`Embedding ${chunks.length} chunks for ${channelId}...`);
+    log(`[${channelId}]: Embedding ${chunks.length} chunks...`);
     for (const chunk of chunks) {
       const output = await embedder(chunk.text, { pooling: 'mean', normalize: true });
       chunk.embedding = Array.from(output.data);
     }
 
     channelDocs[channelId] = chunks;
-    log(`Loaded ${chunks.length} chunks from ${files.length} documents for ${channelId}`);
+    log(`[${channelId}]: Loaded ${chunks.length} chunks from ${files.length} documents`);
   }
 
-  log('Documentation loading complete!');
+  log('[GLOBAL]: Documentation loading complete!');
   isInitialized = true;
 }
 
@@ -344,7 +345,7 @@ I monitor specific channels and help answer questions.
     } else if (args === 'silence') {
       userPrefs.updateUserPreference(user_id, { silenced: true });
       responseText = "DaSilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
-      log(`User ${user_id} enabled silence mode via slash command`);
+      log(`[${channelId}]: User ${user_id} enabled silence mode via slash command`);
     } else if (args === 'unsilence') {
       userPrefs.updateUserPreference(user_id, { silenced: false });
       responseText = "You'll now receive ambient responses when you ask questions.";
@@ -683,7 +684,7 @@ async function handleMention(event) {
   try {
     const { text, channel, ts, user } = event;
     
-    log(`? Mention request received from user ${user} (msg: ${ts})`);
+    log(`[${channel}]: @mention request received from user ${user} (msg: ${ts})`);
     debug(`Mention received in channel ${channel}: ${text}`);
     
     // Check if we have configuration for this channel
@@ -709,7 +710,7 @@ async function handleMention(event) {
     
     if (allChunks.length === 0) {
       // No documents, skip
-      log(`Skipping - no channel ${channel} documents`);
+      log(`[${channel}]: skipping - no channel documents`);
       await slackClient.chat.postMessage({
         channel: channel,
         thread_ts: ts,
@@ -768,7 +769,7 @@ async function handleMention(event) {
     });
 
     const totalTokens = completion.usage?.total_tokens || 0;
-    log(`Mention reply (${totalTokens} tokens) sent to channel ${channel} (msg: ${ts})`);
+    log(`[${channel}]: @mention response (${totalTokens} tokens) sent for ${user} (msg: ${ts})`);
 
   } catch (error) {
     logError('Error handling mention:', error);
@@ -821,7 +822,7 @@ async function handleChannelMessage(event) {
       return;
     }
 
-    log(`? Public request received from user ${user} in channel ${channel} (msg: ${event.ts})`);
+    log(`[${channel}]: ambient request received from user ${user} (msg: ${event.ts})`);
 
     // Get instructions (always included)
     const instructions = channelInstructions[channel] || 'Answer based only on provided documentation.';
@@ -832,7 +833,7 @@ async function handleChannelMessage(event) {
     
     if (allChunks.length === 0) {
       // No documents, skip
-      log(`Skipping - no channel ${channel} documents`);
+      log(`[${channel}]: skipping - no channel documents`);
       return;
     }
 
@@ -870,7 +871,7 @@ async function handleChannelMessage(event) {
 
     // If reply is empty, stay silent (low confidence or no relevant answer)
     if (!reply || reply.trim().length === 0) {
-      log(`Ephemeral reply not sent to user ${user} in channel ${channel} (out of scope or not relevant)`);
+      log(`[${channel}]: ambient response NOT sent to user ${user} (out of scope or not relevant)`);
       return;
     }
 
@@ -885,12 +886,12 @@ async function handleChannelMessage(event) {
     recordResponse(channel, user);
 
     const totalTokens = completion.usage?.total_tokens || 0;
-    log(`Ephemeral reply (${totalTokens} tokens) sent to user ${user} in channel ${channel} (msg: ${event.ts})`);
+    log(`[${channel}]: ambient response (${totalTokens} tokens) sent to user ${user} (msg: ${event.ts})`);
 
   } catch (error) {
     logError('Error handling channel message:', error);
     logError('Error details:', error.message);
-    log(`Ephemeral reply not sent to user ${event.user} in channel ${event.channel} (error: ${error.message})`);
+    log(`[${event.channel}]: ambient response NOT sent to user ${event.user} (error: ${error.message})`);
 
     // Notify user of error via ephemeral message
     try {
@@ -949,7 +950,7 @@ async function handleFileUpload(event) {
 
     debug(`File info: ${file.name}, type: ${file.filetype}, size: ${file.size}`);
 
-    log(`Processing file upload: ${file.name} in channel ${channel_id}`);
+    log(`[${channel_id}]: processing file upload: ${file.name}`);
 
     // Validate file type
     const allowedExtensions = ['md', 'txt', 'text', 'markdown'];
@@ -967,7 +968,7 @@ async function handleFileUpload(event) {
     const targetPath = path.join(channelConfigModule.CHANNELS_DIR, channel_id, file.name);
     fs.writeFileSync(targetPath, fileContent, 'utf-8');
 
-    log(`Saved file to: ${targetPath}`);
+    log(`[${channel_id}]: saved file to: ${targetPath}`);
 
     // Re-embed documentation for this channel
     await reEmbedChannel(channel_id);
@@ -978,7 +979,7 @@ async function handleFileUpload(event) {
       text: `Successfully added documentation: *${file.name}*`
     });
 
-    log(`File upload complete: ${file.name}`);
+    log(`[${channel_id}]: file upload complete: ${file.name}`);
 
   } catch (error) {
     logError('Error handling file upload:', error);
@@ -1027,7 +1028,7 @@ async function downloadSlackFile(file, maxRetries = 3) {
 
 // Helper: Re-embed documentation for a specific channel
 async function reEmbedChannel(channelId) {
-  log(`Re-embedding documentation for ${channelId}...`);
+  log(`[${channelId}]: re-embedding documentation...`);
 
   const channelPath = path.join(channelConfigModule.CHANNELS_DIR, channelId);
 
@@ -1040,14 +1041,14 @@ async function reEmbedChannel(channelId) {
   const instructionsPath = path.join(channelPath, channelConfigModule.INSTRUCTIONS_FILE);
   if (fs.existsSync(instructionsPath)) {
     channelInstructions[channelId] = fs.readFileSync(instructionsPath, 'utf-8');
-    log(`Reloaded instructions for ${channelId}`);
+    log(`[${channelId}]: reloaded instructions`);
   }
 
   // Load all markdown files (excluding instructions file)
   const files = fs.readdirSync(channelPath)
     .filter(f => f.endsWith('.md') && f !== channelConfigModule.INSTRUCTIONS_FILE);
 
-  log(`Found ${files.length} markdown files to embed`);
+  log(`[${channelId}]: found ${files.length} markdown files to embed`);
 
   const chunks = [];
 
@@ -1066,7 +1067,7 @@ async function reEmbedChannel(channelId) {
     });
   }
 
-  log(`Embedding ${chunks.length} chunks for ${channelId}...`);
+  log(`[${channelId}]: embedding ${chunks.length} chunks...`);
 
   // Generate embeddings for all chunks
   for (const chunk of chunks) {
@@ -1077,7 +1078,7 @@ async function reEmbedChannel(channelId) {
   // Update the in-memory documentation
   channelDocs[channelId] = chunks;
 
-  log(`Re-embedded ${chunks.length} chunks from ${files.length} documents for ${channelId}`);
+  log(`[${channelId}]: re-embedded ${chunks.length} chunks from ${files.length} documents`);
 }
 
 // Initialize everything and start server
@@ -1086,8 +1087,8 @@ async function startServer() {
     await initializeDocumentation();
     
     app.listen(port, () => {
-      log(`dasilva listening on port ${port}`);
-      log('Ready to answer questions!');
+      log(`[GLOBAL]: dasilva listening on port ${port}`);
+      log('[GLOBAL]: Ready to answer questions!');
     });
   } catch (error) {
     logError('Failed to initialize:', error);

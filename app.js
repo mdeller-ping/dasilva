@@ -839,7 +839,7 @@ async function handleChannelMessage(event) {
 
     // If reply is empty, stay silent (low confidence or no relevant answer)
     if (!reply || reply.trim().length === 0) {
-      debug('Empty reply from OpenAI - staying silent');
+      console.log(`Ephemeral reply not sent to user ${user} in channel ${channel} (out of scope or not relevant)`);
       return;
     }
 
@@ -859,6 +859,7 @@ async function handleChannelMessage(event) {
   } catch (error) {
     console.error('Error handling channel message:', error);
     console.error('Error details:', error.message);
+    console.log(`Ephemeral reply not sent to user ${event.user} in channel ${event.channel} (error: ${error.message})`);
 
     // Notify user of error via ephemeral message
     try {

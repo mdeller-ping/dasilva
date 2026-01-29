@@ -925,11 +925,7 @@ async function handleFileUpload(event) {
     const fileExtension = file.name.split('.').pop().toLowerCase();
 
     if (!allowedExtensions.includes(fileExtension)) {
-      await slackClient.chat.postEphemeral({
-        channel: channel_id,
-        user: user_id,
-        text: `File type .${fileExtension} is not supported. Please upload .md or .txt files.`
-      });
+      debug(`Skipping file upload - unsupported type: .${fileExtension} (${file.name})`);
       return;
     }
 

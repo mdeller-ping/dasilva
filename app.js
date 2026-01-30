@@ -340,7 +340,8 @@ I monitor specific channels and help answer questions.
 *Admin Commands:*
 - \`/dasilva subscribe\` - Add current channel to configuration
 - \`/dasilva leave\` - Remove current channel from configuration
-- \`/dasilva list\` - List all configured channels`;
+- \`/dasilva channels\` - List all configured channels
+- \`/dasilva flushdocs\` - Delete all documents from this channel`;
       }
     } else if (args === 'silence') {
       userPrefs.updateUserPreference(user_id, { silenced: true });
@@ -420,7 +421,7 @@ I monitor specific channels and help answer questions.
           return;
         }
       }
-    } else if (args === 'list') {
+    } else if (args === 'channels') {
       // Admin-only command
       if (!isAdmin(user_id)) {
         responseText = 'You must be an admin to view channel configurations.';
@@ -433,6 +434,41 @@ I monitor specific channels and help answer questions.
             channels.map(([id]) =>
               `• <#${id}> (\`${id}\`)\n  Path: \`${path.join(channelConfigModule.CHANNELS_DIR, id)}\``
             ).join('\n\n');
+        }
+      }
+    } else if (args === 'flushdocs') {
+      // Admin-only command
+      if (!isAdmin(user_id)) {
+        responseText = 'You must be an admin to flush channel documents.';
+      } else {
+        const channelId = req.body.channel_id;
+
+        if (!channelConfigModule.channelExists(channelId)) {
+          responseText = 'This channel is not configured.';
+        } else {
+          const channelPath = path.join(channelConfigModule.CHANNELS_DIR, channelId);
+
+          if (!fs.existsSync(channelPath)) {
+            responseText = 'Channel folder not found.';
+          } else {
+            // Delete all document files (keep the directory itself)
+            const files = fs.readdirSync(channelPath);
+            let deletedCount = 0;
+            for (const file of files) {
+              const filePath = path.join(channelPath, file);
+              if (fs.statSync(filePath).isFile()) {
+                fs.unlinkSync(filePath);
+                deletedCount++;
+              }
+            }
+
+            // Clear in-memory docs and instructions for this channel
+            delete channelDocs[channelId];
+            delete channelInstructions[channelId];
+
+            log(`[${channelId}]: flushdocs by admin ${user_id} - deleted ${deletedCount} files`);
+            responseText = `Flushed ${deletedCount} file(s) from <#${channelId}>. Upload new documents to retrain.`;
+          }
         }
       }
     } else {
@@ -472,6 +508,17 @@ app.post('/slack/events', async (req, res) => {
 
   // Log all incoming events for debugging
   debug(`Event received: type=${event?.type}, subtype=${event?.subtype}`);
+
+  // Handle file_shared events
+  if (event && event.type === 'file_shared') {
+    debug('File shared event detected');
+    await handleFileUpload({
+      file_id: event.file_id,
+      channel_id: event.channel_id,
+      user_id: event.user_id
+    });
+    return;
+  }
 
   // Handle file uploads (message with file_share subtype)
   if (event && event.type === 'message' && event.subtype === 'file_share') {
@@ -577,7 +624,7 @@ async function handleLeaveChannelSubmission(view, userId) {
   const values = view.state.values;
   const confirmationInput = values.confirmation_block.confirmation_input.value.trim();
 
-  log(`Admin ${userId} attempting to leave channel: ${channelId}`);
+  log(`[${channelId}]: admin ${userId} attempting to leave channel`);
 
   // Validate that user typed the exact channel ID
   if (confirmationInput !== channelId) {
@@ -605,7 +652,7 @@ async function handleLeaveChannelSubmission(view, userId) {
   delete channelDocs[channelId];
   delete channelInstructions[channelId];
 
-  log(`Channel ${channelId} deleted by admin ${userId}`);
+  log(`[${channelId}]: channel left by admin ${userId}`);
 
   // Clear the modal
   return { response_action: 'clear' };
@@ -962,7 +1009,7 @@ async function handleFileUpload(event) {
     const fileExtension = file.name.split('.').pop().toLowerCase();
 
     if (!allowedExtensions.includes(fileExtension)) {
-      debug(`Skipping file upload - unsupported type: .${fileExtension} (${file.name})`);
+      log(`[${channel_id}]: skipping file upload - unsupported type: .${fileExtension} (${file.name})`);
       return;
     }
 

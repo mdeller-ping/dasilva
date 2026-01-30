@@ -248,7 +248,12 @@ Admin users have access to additional slash commands:
   - Opens a confirmation modal (requires typing channel ID to confirm)
   - Deletes the channel directory and all its documentation
 
-- **`/dasilva list`** - Shows all configured channels
+- **`/dasilva channels`** - Shows all configured channels
+
+- **`/dasilva flushdocs`** - Delete all documents from the current channel
+  - Removes all files from the channel's documentation folder
+  - Clears in-memory docs and embeddings
+  - Channel remains subscribed; upload new documents to retrain
 
 #### Hot Reload
 

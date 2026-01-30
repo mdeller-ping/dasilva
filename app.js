@@ -21,6 +21,7 @@ const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 const MODEL = process.env.MODEL || 'gpt-5-mini'; // OpenAI model to use
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 2000; // Characters per chunk
 const MAX_CHUNKS = parseInt(process.env.MAX_CHUNKS) || 5; // Number of chunks to include
+const THREAD_CONTEXT_MESSAGES = parseInt(process.env.THREAD_CONTEXT_MESSAGES) || 10; // Thread history messages to include
 const HELP_FOOTER = '\n\n_Type `/dasilva help` for more information_';
 const ADMIN_USERS = (process.env.ADMIN_USERS || '').split(',').map(id => id.trim()).filter(Boolean);
 const AMBIENT_MODE = process.env.AMBIENT_MODE === 'true';
@@ -70,6 +71,20 @@ function isAdmin(userId) {
 
 // Rate limiting: Track last response time per user per channel
 const lastResponseTimes = new Map(); // key: "channelId:userId", value: timestamp
+
+// Track threads the bot is actively participating in
+const activeThreads = new Map(); // key: "channelId:threadTs", value: timestamp of last activity
+const ACTIVE_THREAD_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+// Periodically clean up stale active threads
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, lastActivity] of activeThreads) {
+    if (now - lastActivity > ACTIVE_THREAD_TTL_MS) {
+      activeThreads.delete(key);
+    }
+  }
+}, 10 * 60 * 1000); // Check every 10 minutes
 
 // Embedder will be initialized asynchronously
 let embedder = null;
@@ -282,7 +297,7 @@ app.post('/slack/commands', async (req, res) => {
   }, 2500);
 
   try {
-    const { command, text, user_id, trigger_id } = req.body;
+    const { command, text, user_id: userId, trigger_id, channel_id: channelId } = req.body;
 
     // Verify it's our command
     if (command !== '/dasilva') {
@@ -306,7 +321,7 @@ app.post('/slack/commands', async (req, res) => {
 
     // Handle different subcommands
     if (args === 'help' || args === 'about' || args === '') {
-      const userPref = userPrefs.getUserPreference(user_id);
+      const userPref = userPrefs.getUserPreference(userId);
       const silencedStatus = userPref.silenced ? 'Yes' : 'No';
       const cooldownStatus = userPref.customCooldown !== null
         ? `${userPref.customCooldown / 60} minutes`
@@ -316,9 +331,10 @@ app.post('/slack/commands', async (req, res) => {
 
 I monitor specific channels and help answer questions.
 
-*How I responsd:*
-- *@mention me* - I reply *publicly* in the channel
-- *Ask a question in the channel* - I may reply *privately* (DM) to avoid channel spam and not discourage participation
+*How I respond:*
+- *@mention me* - I reply *publicly* in a thread
+- *Reply in that thread* - I stay in the conversation and respond to follow-ups (no need to @mention me again)
+- *Ask a question in the channel* - I may reply *privately* to avoid channel spam and not discourage participation
 
 *What do I know:*
 - I’m trained on internal and external documentation relevant to this channel’s topics
@@ -334,7 +350,7 @@ I monitor specific channels and help answer questions.
 - Cooldown: ${cooldownStatus}`;
 
       // Add admin commands to help if user is admin
-      if (isAdmin(user_id)) {
+      if (isAdmin(userId)) {
         responseText += `
 
 *Admin Commands:*
@@ -344,13 +360,13 @@ I monitor specific channels and help answer questions.
 - \`/dasilva flushdocs\` - Delete all documents from this channel`;
       }
     } else if (args === 'silence') {
-      userPrefs.updateUserPreference(user_id, { silenced: true });
+      userPrefs.updateUserPreference(userId, { silenced: true });
       responseText = "DaSilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
-      log(`[${channelId}]: User ${user_id} enabled silence mode via slash command`);
+      log(`[${channelId}]: User ${userId} enabled silence mode via slash command`);
     } else if (args === 'unsilence') {
-      userPrefs.updateUserPreference(user_id, { silenced: false });
+      userPrefs.updateUserPreference(userId, { silenced: false });
       responseText = "You'll now receive ambient responses when you ask questions.";
-      log(`User ${user_id} disabled silence mode via slash command`);
+      log(`User ${userId} disabled silence mode via slash command`);
     } else if (args.startsWith('cooldown ')) {
       const minutesMatch = args.match(/^cooldown\s+(\d+)$/);
       if (!minutesMatch) {
@@ -361,20 +377,17 @@ I monitor specific channels and help answer questions.
           responseText = `Cooldown must be between 0 and 1440 minutes (24 hours). You provided: ${minutes} minutes.`;
         } else {
           const cooldownSeconds = minutes * 60;
-          userPrefs.updateUserPreference(user_id, { customCooldown: cooldownSeconds });
+          userPrefs.updateUserPreference(userId, { customCooldown: cooldownSeconds });
           const minuteText = minutes === 1 ? 'minute' : 'minutes';
           responseText = `Your cooldown has been set to ${minutes} ${minuteText}.`;
-          log(`User ${user_id} set custom cooldown to ${minutes} minutes via slash command`);
+          log(`User ${userId} set custom cooldown to ${minutes} minutes via slash command`);
         }
       }
     } else if (args === 'subscribe') {
       // Admin-only command
-      if (!isAdmin(user_id)) {
+      if (!isAdmin(userId)) {
         responseText = 'You must be an admin to configure channels.';
       } else {
-        // Use the current channel context
-        const channelId = req.body.channel_id;
-
         // Check if channel already exists
         if (channelConfigModule.channelExists(channelId)) {
           responseText = `Channel <#${channelId}> is already configured.`;
@@ -387,7 +400,7 @@ I monitor specific channels and help answer questions.
 
             // Reload channel asynchronously
             reloadChannel(channelId).then(reloaded => {
-              log(`Channel ${channelId} added by admin ${user_id}. Reload: ${reloaded ? 'success' : 'no docs yet'}`);
+              log(`Channel ${channelId} added by admin ${userId}. Reload: ${reloaded ? 'success' : 'no docs yet'}`);
             }).catch(error => {
               logError(`Error reloading channel ${channelId}:`, error);
             });
@@ -398,12 +411,9 @@ I monitor specific channels and help answer questions.
       }
     } else if (args === 'leave') {
       // Admin-only command
-      if (!isAdmin(user_id)) {
+      if (!isAdmin(userId)) {
         responseText = 'You must be an admin to configure channels.';
       } else {
-        // Use the current channel context
-        const channelId = req.body.channel_id;
-
         if (!channelConfigModule.channelExists(channelId)) {
           responseText = `This channel is not configured.`;
         } else {
@@ -423,7 +433,7 @@ I monitor specific channels and help answer questions.
       }
     } else if (args === 'channels') {
       // Admin-only command
-      if (!isAdmin(user_id)) {
+      if (!isAdmin(userId)) {
         responseText = 'You must be an admin to view channel configurations.';
       } else {
         const channels = channelConfigModule.getAllChannels();
@@ -438,11 +448,9 @@ I monitor specific channels and help answer questions.
       }
     } else if (args === 'flushdocs') {
       // Admin-only command
-      if (!isAdmin(user_id)) {
+      if (!isAdmin(userId)) {
         responseText = 'You must be an admin to flush channel documents.';
       } else {
-        const channelId = req.body.channel_id;
-
         if (!channelConfigModule.channelExists(channelId)) {
           responseText = 'This channel is not configured.';
         } else {
@@ -466,7 +474,7 @@ I monitor specific channels and help answer questions.
             delete channelDocs[channelId];
             delete channelInstructions[channelId];
 
-            log(`[${channelId}]: flushdocs by admin ${user_id} - deleted ${deletedCount} files`);
+            log(`[${channelId}]: flushdocs by admin ${userId} - deleted ${deletedCount} files`);
             responseText = `Flushed ${deletedCount} file(s) from <#${channelId}>. Upload new documents to retrain.`;
           }
         }
@@ -513,9 +521,9 @@ app.post('/slack/events', async (req, res) => {
   if (event && event.type === 'file_shared') {
     debug('File shared event detected');
     await handleFileUpload({
-      file_id: event.file_id,
-      channel_id: event.channel_id,
-      user_id: event.user_id
+      fileId: event.file_id,
+      channelId: event.channel_id,
+      userId: event.user_id
     });
     return;
   }
@@ -532,9 +540,9 @@ app.post('/slack/events', async (req, res) => {
           continue;
         }
         await handleFileUpload({
-          file_id: file.id,
-          channel_id: event.channel,
-          user_id: event.user
+          fileId: file.id,
+          channelId: event.channel,
+          userId: event.user
         });
       }
     }
@@ -554,6 +562,14 @@ app.post('/slack/events', async (req, res) => {
       debug('Skipping message - contains mention');
       return;
     }
+
+    // If this is a reply in a thread the bot is actively participating in, treat it like a mention
+    if (event.thread_ts && activeThreads.has(`${event.channel}:${event.thread_ts}`)) {
+      debug('Message in active thread - routing to handleMention');
+      await handleMention(event);
+      return;
+    }
+
     await handleChannelMessage(event);
   }
 
@@ -729,48 +745,74 @@ async function reloadChannel(channelId) {
   }
 }
 
-// Handle when bot is mentioned
+// Fetch recent thread history from Slack and map to OpenAI message roles
+async function getThreadHistory(channel, threadTs, currentMessageTs) {
+  try {
+    const result = await slackClient.conversations.replies({
+      channel: channel,
+      ts: threadTs,
+      limit: 50
+    });
+
+    if (!result.ok || !result.messages) return [];
+
+    // Exclude the current message (we add it separately)
+    const threadMessages = result.messages.filter(msg => msg.ts !== currentMessageTs);
+
+    // Map to OpenAI roles and take the last N messages
+    return threadMessages.slice(-THREAD_CONTEXT_MESSAGES).map(msg => ({
+      role: msg.bot_id ? 'assistant' : 'user',
+      content: (msg.text || '').replace(/<@[A-Z0-9]+>/g, '').trim()
+    })).filter(msg => msg.content.length > 0);
+  } catch (error) {
+    logError('Error fetching thread history:', error);
+    return [];
+  }
+}
+
+// Handle when bot is mentioned (or continues a conversation in an active thread)
 async function handleMention(event) {
   try {
-    const { text, channel, ts, user } = event;
-    
-    log(`[${channel}]: @mention request received from user ${user} (msg: ${ts})`);
-    debug(`Mention received in channel ${channel}: ${text}`);
-    
+    const { text, channel: channelId, ts, user: userId } = event;
+    const threadTs = event.thread_ts || ts; // Reply in the parent thread if one exists
+
+    log(`[${channelId}]: request received from user ${userId} in thread ${threadTs} (msg: ${ts})`);
+    debug(`Mention/thread message in channel ${channelId}: ${text}`);
+
     // Check if we have configuration for this channel
-    const config = channelConfigModule.getChannel(channel);
+    const config = channelConfigModule.getChannel(channelId);
     if (!config) {
       await slackClient.chat.postMessage({
-        channel: channel,
-        thread_ts: ts,
+        channel: channelId,
+        thread_ts: threadTs,
         text: "Sorry, I'm not configured for this channel yet."
       });
       return;
     }
 
     // Get instructions (always included)
-    const instructions = channelInstructions[channel] || 'Answer based only on provided documentation.';
-    
+    const instructions = channelInstructions[channelId] || 'Answer based only on provided documentation.';
+
     // Remove the bot mention from the text
     const userMessage = text.replace(/<@[A-Z0-9]+>/g, '').trim();
-    
+
     // Get relevant chunks based on the user's question
-    const allChunks = channelDocs[channel] || [];
+    const allChunks = channelDocs[channelId] || [];
     const relevantChunks = await findRelevantChunks(allChunks, userMessage, MAX_CHUNKS);
-    
+
     if (allChunks.length === 0) {
       // No documents, skip
-      log(`[${channel}]: skipping - no channel documents`);
+      log(`[${channelId}]: skipping - no channel documents`);
       await slackClient.chat.postMessage({
-        channel: channel,
-        thread_ts: ts,
+        channel: channelId,
+        thread_ts: threadTs,
         text: "Sorry, I have not been trained for this channel yet."
       });
       return;
     }
 
     debug(`Found ${relevantChunks.length} relevant chunks out of ${allChunks.length} total`);
-    
+
     const docsContext = relevantChunks.length > 0
       ? relevantChunks.map(chunk => `[From ${chunk.source}]\n${chunk.text}`).join('\n\n---\n\n')
       : 'No relevant documentation found.';
@@ -779,11 +821,21 @@ async function handleMention(event) {
     // Instruct the model to decline answering when the documentation doesn't cover the topic
     const mentionGuidance = '\n\nIMPORTANT: You must only answer based on the available documentation above. If the question is not covered by the documentation, or you are not confident you can provide an accurate answer from it, respond with exactly an empty message (no text at all). Do not guess or make up an answer.';
 
+    // Fetch thread history if this is part of an ongoing thread
+    const threadHistory = event.thread_ts
+      ? await getThreadHistory(channelId, event.thread_ts, ts)
+      : [];
+
+    if (threadHistory.length > 0) {
+      debug(`Including ${threadHistory.length} thread history messages`);
+    }
+
     const messages = [
       {
         role: "system",
         content: `${instructions}\n\n---\n\n# Available Documentation:\n\n${docsContext}${mentionGuidance}`
       },
+      ...threadHistory,
       { role: "user", content: userMessage }
     ];
 
@@ -797,17 +849,17 @@ async function handleMention(event) {
     debug('Full completion object:', JSON.stringify(completion, null, 2));
     debug('Choices:', completion.choices);
     debug('First choice:', completion.choices?.[0]);
-    
+
     const reply = completion.choices[0].message.content;
     debug('Reply received:', reply);
     debug('Reply length:', reply?.length || 0);
 
     // If reply is empty, the model declined to answer (out of scope or low confidence)
     if (!reply || reply.trim().length === 0) {
-      log(`[${channel}]: @mention response NOT sent for ${user} (out of scope or not relevant)`);
+      log(`[${channelId}]: response NOT sent for ${userId} (out of scope or not relevant)`);
       await slackClient.chat.postMessage({
-        channel: channel,
-        thread_ts: ts,
+        channel: channelId,
+        thread_ts: threadTs,
         text: "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel."
       });
       return;
@@ -815,22 +867,25 @@ async function handleMention(event) {
 
     // Post reply publicly in thread (not ephemeral - mentions are public)
     await slackClient.chat.postMessage({
-      channel: channel,
-      thread_ts: ts,
+      channel: channelId,
+      thread_ts: threadTs,
       text: reply
     });
 
+    // Track this thread so the bot continues responding to follow-ups
+    activeThreads.set(`${channelId}:${threadTs}`, Date.now());
+
     const totalTokens = completion.usage?.total_tokens || 0;
-    log(`[${channel}]: @mention response (${totalTokens} tokens) sent for ${user} (msg: ${ts})`);
+    log(`[${channelId}]: response (${totalTokens} tokens) sent for ${userId} in thread ${threadTs}`);
 
   } catch (error) {
     logError('Error handling mention:', error);
-    
+
     // Send error message to Slack
     try {
       await slackClient.chat.postMessage({
         channel: event.channel,
-        thread_ts: event.ts,
+        thread_ts: event.thread_ts || event.ts,
         text: "Sorry, I encountered an error processing your request."
       });
     } catch (slackError) {
@@ -842,23 +897,30 @@ async function handleMention(event) {
 // Handle messages in channels the bot is in
 async function handleChannelMessage(event) {
   try {
-    const { text, user, channel } = event;
-    
-    debug(`Channel message from user ${user} in ${channel}: ${text}`);
+    const { text, user: userId, channel: channelId } = event;
+
+    debug(`Channel message from user ${userId} in ${channelId}: ${text}`);
+
+    // Safety net: skip if this is a thread the bot is actively participating in
+    // (should already be routed to handleMention, but prevent duplicate ephemeral responses)
+    if (event.thread_ts && activeThreads.has(`${channelId}:${event.thread_ts}`)) {
+      debug(`Skipping ambient - active thread ${event.thread_ts}`);
+      return;
+    }
 
     // Check if we have configuration for this channel
-    const config = channelConfigModule.getChannel(channel);
+    const config = channelConfigModule.getChannel(channelId);
     if (!config) {
       // Silently ignore messages from unconfigured channels
-      debug(`Skipping - channel ${channel} is not subscribed`);
+      debug(`Skipping - channel ${channelId} is not subscribed`);
       return;
     }
 
     debug(`Ambient Mode: ${AMBIENT_MODE}`)
 
     // Check if user has silenced themselves
-    if (userPrefs.isUserSilenced(user)) {
-      debug(`Skipping - user ${user} is silenced`);
+    if (userPrefs.isUserSilenced(userId)) {
+      debug(`Skipping - user ${userId} is silenced`);
       return;
     }
 
@@ -869,28 +931,28 @@ async function handleChannelMessage(event) {
     }
 
     // Rate limiting: Check if we recently responded to this user
-    if (!shouldRespondToUser(channel, user)) {
-      debug(`Skipping - user ${user} in cooldown period`);
+    if (!shouldRespondToUser(channelId, userId)) {
+      debug(`Skipping - user ${userId} in cooldown period`);
       return;
     }
 
-    log(`[${channel}]: ambient request received from user ${user} (msg: ${event.ts})`);
+    log(`[${channelId}]: ambient request received from user ${userId} (msg: ${event.ts})`);
 
     // Get instructions (always included)
-    const instructions = channelInstructions[channel] || 'Answer based only on provided documentation.';
-    
+    const instructions = channelInstructions[channelId] || 'Answer based only on provided documentation.';
+
     // Get documentation for this channel
-    const allChunks = channelDocs[channel] || [];
+    const allChunks = channelDocs[channelId] || [];
     const relevantChunks = await findRelevantChunks(allChunks, text, MAX_CHUNKS);
-    
+
     if (allChunks.length === 0) {
       // No documents, skip
-      log(`[${channel}]: skipping - no channel documents`);
+      log(`[${channelId}]: skipping - no channel documents`);
       return;
     }
 
     debug(`Found ${relevantChunks.length} relevant chunks out of ${allChunks.length} total`);
-    
+
     const docsContext = relevantChunks.length > 0
       ? relevantChunks.map(chunk => `[From ${chunk.source}]\n${chunk.text}`).join('\n\n---\n\n')
       : 'No relevant documentation found.';
@@ -909,7 +971,7 @@ async function handleChannelMessage(event) {
 
     // Call ChatGPT
     debug('Calling OpenAI with', messages[0].content.length, 'chars of context');
-    
+
     const completion = await openai.chat.completions.create({
       model: MODEL,
       messages: messages,
@@ -923,22 +985,22 @@ async function handleChannelMessage(event) {
 
     // If reply is empty, stay silent (low confidence or no relevant answer)
     if (!reply || reply.trim().length === 0) {
-      log(`[${channel}]: ambient response NOT sent to user ${user} (out of scope or not relevant)`);
+      log(`[${channelId}]: ambient response NOT sent to user ${userId} (out of scope or not relevant)`);
       return;
     }
 
     // Send ephemeral message (only visible to the user who posted)
     await slackClient.chat.postEphemeral({
-      channel: channel,  // Post in the same channel
-      user: user,        // Only this user can see it
+      channel: channelId,
+      user: userId,
       text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`
     });
 
     // Record that we responded to this user
-    recordResponse(channel, user);
+    recordResponse(channelId, userId);
 
     const totalTokens = completion.usage?.total_tokens || 0;
-    log(`[${channel}]: ambient response (${totalTokens} tokens) sent to user ${user} (msg: ${event.ts})`);
+    log(`[${channelId}]: ambient response (${totalTokens} tokens) sent to user ${userId} (msg: ${event.ts})`);
 
   } catch (error) {
     logError('Error handling channel message:', error);
@@ -965,16 +1027,16 @@ const FILE_DEDUP_TTL_MS = 60000; // 1 minute
 // Handle file uploads to canvas
 async function handleFileUpload(event) {
   try {
-    const { file_id, channel_id, user_id } = event;
+    const { fileId, channelId, userId } = event;
 
-    debug(`File upload detected: ${file_id} in channel ${channel_id} by user ${user_id}`);
+    debug(`File upload detected: ${fileId} in channel ${channelId} by user ${userId}`);
 
     // Deduplicate: skip if we recently processed this file
-    if (recentlyProcessedFiles.has(file_id)) {
-      debug(`Skipping - file ${file_id} already processed recently`);
+    if (recentlyProcessedFiles.has(fileId)) {
+      debug(`Skipping - file ${fileId} already processed recently`);
       return;
     }
-    recentlyProcessedFiles.set(file_id, Date.now());
+    recentlyProcessedFiles.set(fileId, Date.now());
 
     // Clean up old entries periodically
     for (const [id, timestamp] of recentlyProcessedFiles) {
@@ -984,32 +1046,32 @@ async function handleFileUpload(event) {
     }
 
     // Check if user is admin
-    if (!isAdmin(user_id)) {
+    if (!isAdmin(userId)) {
       debug('Skipping - user is not admin');
       return;
     }
 
     // Check if we have configuration for this channel
-    const config = channelConfigModule.getChannel(channel_id);
+    const config = channelConfigModule.getChannel(channelId);
     if (!config) {
       debug('Skipping - channel not configured');
       return;
     }
 
     // Get file information
-    const fileInfo = await slackClient.files.info({ file: file_id });
+    const fileInfo = await slackClient.files.info({ file: fileId });
     const file = fileInfo.file;
 
     debug(`File info: ${file.name}, type: ${file.filetype}, size: ${file.size}`);
 
-    log(`[${channel_id}]: processing file upload: ${file.name}`);
+    log(`[${channelId}]: processing file upload: ${file.name}`);
 
     // Validate file type
     const allowedExtensions = ['md', 'txt', 'text', 'markdown'];
     const fileExtension = file.name.split('.').pop().toLowerCase();
 
     if (!allowedExtensions.includes(fileExtension)) {
-      log(`[${channel_id}]: skipping file upload - unsupported type: .${fileExtension} (${file.name})`);
+      log(`[${channelId}]: skipping file upload - unsupported type: .${fileExtension} (${file.name})`);
       return;
     }
 
@@ -1017,21 +1079,21 @@ async function handleFileUpload(event) {
     const fileContent = await downloadSlackFile(file);
 
     // Save to channel's folder
-    const targetPath = path.join(channelConfigModule.CHANNELS_DIR, channel_id, file.name);
+    const targetPath = path.join(channelConfigModule.CHANNELS_DIR, channelId, file.name);
     fs.writeFileSync(targetPath, fileContent, 'utf-8');
 
-    log(`[${channel_id}]: saved file to: ${targetPath}`);
+    log(`[${channelId}]: saved file to: ${targetPath}`);
 
     // Re-embed documentation for this channel
-    await reEmbedChannel(channel_id);
+    await reEmbedChannel(channelId);
 
     // Notify success
     await slackClient.chat.postMessage({
-      channel: channel_id,
+      channel: channelId,
       text: `Successfully added documentation: *${file.name}*`
     });
 
-    log(`[${channel_id}]: file upload complete: ${file.name}`);
+    log(`[${channelId}]: file upload complete: ${file.name}`);
 
   } catch (error) {
     logError('Error handling file upload:', error);
@@ -1040,8 +1102,8 @@ async function handleFileUpload(event) {
     // Notify user of error
     try {
       await slackClient.chat.postEphemeral({
-        channel: event.channel_id,
-        user: event.user_id,
+        channel: event.channelId,
+        user: event.userId,
         text: `Failed to process file upload: ${error.message}`
       });
     } catch (slackError) {

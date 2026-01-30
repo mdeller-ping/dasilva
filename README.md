@@ -3,7 +3,8 @@
 DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered responses based on channel-specific documentation. It offers two interaction modes:
 
 1. **@mentions** - Public threaded responses when explicitly tagged (always responds)
-2. **Ambient listening** - Private ephemeral responses to public questions in subscribed channels
+2. **Thread participation** - Once invited via @mention, the bot stays in the conversation and responds to follow-ups without requiring further @mentions
+3. **Ambient listening** - Private ephemeral responses to public questions in subscribed channels
 
 ## Technologies
 
@@ -29,7 +30,7 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 - **Local semantic search** using `@xenova/transformers` embeddings
 - Channel-specific documentation from Markdown files
 - AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
-- Two interaction modes: @mentions (public) and ambient (private ephemeral)
+- Three interaction modes: @mentions (public), thread participation (public follow-ups), and ambient (private ephemeral)
 - **Slash commands** for user preferences (`/dasilva help`, `/dasilva silence`, etc.)
 - **Admin configuration via Slack** - Subscribe/unsubscribe channels without server access
 - **Hot reload** - Channel changes take effect immediately (no restart needed)
@@ -37,6 +38,8 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 - Per-user rate limiting to prevent spam (ambient mode only)
 - Ephemeral messages for ambient responses (only visible to questioner)
 - Public threaded replies for @mentions
+- **Thread context** - Bot fetches thread history and includes recent messages for multi-turn conversations
+- **Thread participation** - Bot continues responding to follow-ups in threads it has joined (no repeated @mentions needed)
 - **Slack formatting support** - proper code blocks, inline code, bold text
 - Configurable token limits, chunking, and cooldown periods
 - Debug mode for verbose logging
@@ -200,6 +203,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
 | `RESPONSE_COOLDOWN_SECONDS` | 300 | Cooldown between ambient responses to same user (5 min) |
 | `CHUNK_SIZE` | 2000 | Characters per documentation chunk |
 | `MAX_CHUNKS` | 5 | Number of chunks to include in context |
+| `THREAD_CONTEXT_MESSAGES` | 10 | Number of prior thread messages to include for context |
 | `DEBUG_MODE` | false | Enable verbose logging including token counts |
 | `AMBIENT_MODE` | false | when false, users must opt in via unsilence |
 | `ADMIN_USERS` | | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
@@ -312,6 +316,17 @@ Update Slack Event Subscriptions with the ngrok URL.
 ### @Mention Mode (Public)
 User: `@dasilva what are our key features?`
 Bot: Responds publicly in a thread (visible to everyone)
+
+### Thread Participation (Public)
+Once the bot responds in a thread, it stays in the conversation:
+```
+User:  @dasilva what are our key features?
+Bot:   [responds in thread with features list]
+User:  Can you tell me more about feature X?       ← no @mention needed
+Bot:   [responds with details, aware of prior context]
+Other: What about feature Y?                        ← other users can join too
+Bot:   [responds, with full thread history as context]
+```
 
 ### Ambient Mode (Private)
 User: `what are our key features?`

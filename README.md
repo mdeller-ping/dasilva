@@ -9,24 +9,29 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 ## Technologies
 
 **Runtime & Server**
+
 - Node.js
 - Express.js - Web framework for HTTP endpoints
 
 **AI & ML**
+
 - OpenAI API - gpt-5-mini or gpt-5-nano models
 - Xenova/transformers - Local semantic embeddings to minimize token size to OpenAI
 
 **Slack Integration**
+
 - @slack/web-api - Slack API client for posting messages, reading channels
 
 **Development Tools**
-- dotenv  - Environment variable management
-- ESLint  - Code linting and quality
+
+- dotenv - Environment variable management
+- ESLint - Code linting and quality
 - Nodemon - Development hot-reload
 
 ## Current Features (MVP)
 
 ### Core Functionality
+
 - **Local semantic search** using `@xenova/transformers` embeddings
 - Channel-specific documentation from Markdown files
 - AI responses powered by OpenAI (`gpt-5-mini` or `gpt-5-nano`)
@@ -46,6 +51,7 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 - Token usage tracking in logs
 
 ### Smart Filtering (Ambient Mode Only)
+
 - Only responds to messages that look like questions (ends with `?`, starts with question words, contains help keywords)
 - Ambient responses are ephemeral (private) and won't clutter channels or discourage others from participating
 - Rate limits responses per user (default: 5 minutes cooldown)
@@ -53,6 +59,7 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 - @mentions bypass ALL filtering and cooldowns
 
 ### Documentation Management
+
 - **Instructions file** (`_instructions.md`) - Always included with every request
 - **Content files** (all other `.md` files) - Chunked and semantically searched
 - Documentation loaded and embedded at startup
@@ -60,6 +67,7 @@ DaSilva is a Slack bot that monitors subscribed channels and provides AI-powered
 - **Canvas-based file upload** - Admins can upload .md/.txt files to designated Slack channel for automatic ingestion
 
 ### Anti-Hallucination
+
 - Instructions guide the model to be helpful but accurate
 - Won't invent features or capabilities not in documentation
 - Proper Slack formatting for technical content
@@ -74,6 +82,7 @@ dasilva/
 ├── modal-definitions.js             # Slack Block Kit modal definitions
 ├── package.json                     # Dependencies and scripts
 ├── package-lock.json                # Locked dependency versions
+├── manifest.json                    # Manifest file for Slack App install
 ├── .env                             # Environment variables (gitignored, contains API keys)
 ├── env.example                      # Template for environment configuration
 ├── .gitignore                       # Git ignore rules
@@ -92,6 +101,7 @@ dasilva/
 ## Setup
 
 ### Prerequisites
+
 - Node.js (v18+)
 - npm
 - Slack workspace with admin access
@@ -119,64 +129,7 @@ DaSilva is alive!
 
 2. Choose your workspace
 
-3. Paste in the manifest and customize with your <https://YOUR.BOT.URL>
-```json
-{
-    "display_information": {
-        "name": "DaSilva - Product Champion"
-    },
-    "features": {
-        "bot_user": {
-            "display_name": "DaSilva - Product Champion",
-            "always_online": false
-        },
-        "slash_commands": [
-            {
-                "command": "/dasilva",
-                "url": "<https://YOUR.BOT.URL>/slack/commands",
-                "description": "Interact with DaSilva bot",
-                "usage_hint": "help | silence | unsilence | cooldown <minutes>",
-                "should_escape": false
-            }
-        ]
-    },
-    "oauth_config": {
-        "scopes": {
-            "bot": [
-                "app_mentions:read",
-                "channels:history",
-                "channels:read",
-                "chat:write",
-                "commands",
-                "im:write",
-                "incoming-webhook",
-                "users:read",
-                "files:read",
-                "canvases:read",
-                "groups:history"
-            ]
-        }
-    },
-    "settings": {
-        "event_subscriptions": {
-            "request_url": "<https://YOUR.BOT.URL>/slack/events",
-            "bot_events": [
-                "app_mention",
-                "file_shared",
-                "message.channels",
-                "message.groups"
-            ]
-        },
-        "interactivity": {
-            "is_enabled": true,
-            "request_url": "<https://YOUR.BOT.URL>/slack/interactions"
-        },
-        "org_deploy_enabled": false,
-        "socket_mode_enabled": false,
-        "token_rotation_enabled": false
-    }
-}
-```
+3. Paste in the manifest.json and customize with your <https://YOUR.BOT.URL>
 
 4. Note Slack's Signing Secret (Basic Information - App Credentials)
 
@@ -186,7 +139,8 @@ DaSilva is alive!
 
 7. Note Slack's Bot User OAuth Token (OAuth & Permissions - OAuth Tokens)
 
-4. Configure environment variables in `.env`:
+8. Configure environment variables in `.env`:
+
 ```bash
 SLACK_BOT_TOKEN=xoxb-your-token-here-from-above
 SLACK_SIGNING_SECRET=your-signing-secret-here-from-above
@@ -195,23 +149,23 @@ OPENAI_API_KEY=sk-your-openai-key-here
 
 ## Configuration Options
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 3000 | Server port |
-| `MODEL` | gpt-5-mini | OpenAI model (gpt-5-mini or gpt-5-nano) |
-| `MAX_COMPLETION_TOKENS` | 4000 | Max tokens for response (reasoning models need 4000+) |
-| `RESPONSE_COOLDOWN_SECONDS` | 300 | Cooldown between ambient responses to same user (5 min) |
-| `CHUNK_SIZE` | 2000 | Characters per documentation chunk |
-| `MAX_CHUNKS` | 5 | Number of chunks to include in context |
-| `THREAD_CONTEXT_MESSAGES` | 10 | Number of prior thread messages to include for context |
-| `DEBUG_MODE` | false | Enable verbose logging including token counts |
-| `AMBIENT_MODE` | false | when false, users must opt in via unsilence |
-| `ADMIN_USERS` | | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
-| `PERSISTENT_STORAGE` |  | optional path to persistent storage |
-| `LOG_CHANNEL` |  | Slack channel ID to receive copies of log messages |
-| `OPENAI_API_KEY` | your-openai-key | replace with your OpenAI API Key |
-| `SLACK_BOT_TOKEN` | your-slack-bot-token | replace with your Slack Bot Token |
-| `SLACK_SIGNING_SECRET` | your-slack-signing-secret | Replace with your Slack Signing Secret |
+| Variable                    | Default                   | Description                                                     |
+| --------------------------- | ------------------------- | --------------------------------------------------------------- |
+| `PORT`                      | 3000                      | Server port                                                     |
+| `MODEL`                     | gpt-5-mini                | OpenAI model (gpt-5-mini or gpt-5-nano)                         |
+| `MAX_COMPLETION_TOKENS`     | 4000                      | Max tokens for response (reasoning models need 4000+)           |
+| `RESPONSE_COOLDOWN_SECONDS` | 300                       | Cooldown between ambient responses to same user (5 min)         |
+| `CHUNK_SIZE`                | 2000                      | Characters per documentation chunk                              |
+| `MAX_CHUNKS`                | 5                         | Number of chunks to include in context                          |
+| `THREAD_CONTEXT_MESSAGES`   | 10                        | Number of prior thread messages to include for context          |
+| `DEBUG_MODE`                | false                     | Enable verbose logging including token counts                   |
+| `AMBIENT_MODE`              | false                     | when false, users must opt in via unsilence                     |
+| `ADMIN_USERS`               |                           | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
+| `PERSISTENT_STORAGE`        |                           | optional path to persistent storage                             |
+| `LOG_CHANNEL`               |                           | Slack channel ID to receive copies of log messages              |
+| `OPENAI_API_KEY`            | your-openai-key           | replace with your OpenAI API Key                                |
+| `SLACK_BOT_TOKEN`           | your-slack-bot-token      | replace with your Slack Bot Token                               |
+| `SLACK_SIGNING_SECRET`      | your-slack-signing-secret | Replace with your Slack Signing Secret                          |
 
 ### Setting Up Admin Users
 
@@ -220,6 +174,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
    - Select "..." → "Copy member ID"
 
 2. Add admin Slack user IDs to your `.env` file:
+
 ```bash
 # Admin users who can configure channels (comma-separated Slack user IDs)
 ADMIN_USERS=U01234ABCDE,U56789FGHIJ
@@ -237,7 +192,7 @@ Channels are configured by directory presence. Each subscribed channel has a fol
 
 **Add Documentation**
 
-1. In Slack channel, Upload File: _instructions.md
+1. In Slack channel, Upload File: \_instructions.md
 2. In Slack channel, Upload File: Your custom documentation as .txt or .md
 
 #### Admin Slash Commands
@@ -262,6 +217,7 @@ Admin users have access to additional slash commands:
 #### Hot Reload
 
 After adding documentation, the bot automatically:
+
 - Re-processes all markdown files
 - Regenerates embeddings for semantic search
 - Updates in-memory cache
@@ -271,10 +227,12 @@ No bot restart required! Documentation is available immediately.
 #### Troubleshooting
 
 **"You must be an admin" message:**
+
 - Verify your Slack user ID is in the `ADMIN_USERS` environment variable
 - Restart the bot after adding your user ID to `.env`
 
 **Modal doesn't open:**
+
 - Check bot logs for API errors
 - Ensure your Slack app has the `commands` scope configured
 - Verify the interactions endpoint is set up (see Slack App Configuration below)
@@ -295,11 +253,13 @@ In addition to the basic Slack app setup, admin features require:
 ### Running the Bot
 
 Development mode (with auto-restart):
+
 ```bash
 npm run dev
 ```
 
 Production mode:
+
 ```bash
 npm start
 ```
@@ -309,16 +269,20 @@ npm start
 ```bash
 ngrok http 3000
 ```
+
 Update Slack Event Subscriptions with the ngrok URL.
 
 ## Usage
 
 ### @Mention Mode (Public)
+
 User: `@dasilva what are our key features?`
 Bot: Responds publicly in a thread (visible to everyone)
 
 ### Thread Participation (Public)
+
 Once the bot responds in a thread, it stays in the conversation:
+
 ```
 User:  @dasilva what are our key features?
 Bot:   [responds in thread with features list]
@@ -329,6 +293,7 @@ Bot:   [responds, with full thread history as context]
 ```
 
 ### Ambient Mode (Private)
+
 User: `what are our key features?`
 Bot: Responds with ephemeral message (only visible to the user who asked)
 
@@ -351,14 +316,17 @@ Resume receiving ambient mode responses.
 Set a custom cooldown period in minutes (0-1440). This overrides the default 5-minute cooldown.
 
 Examples:
+
 ```
 /dasilva cooldown 10
 ```
+
 Sets cooldown to 10 minutes.
 
 ```
 /dasilva cooldown 0
 ```
+
 Disables cooldown (responses to all questions).
 
 ### Command Notes
@@ -403,6 +371,7 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 ## Troubleshooting
 
 ### Bot doesn't respond
+
 1. Check bot is invited to the channel: `/invite @dasilva`
 2. Verify channel is subscribed: `/dasilva list` (admin only)
 3. Check logs for errors: `DEBUG_MODE=true`
@@ -410,27 +379,32 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 5. Check that `channels/<channelId>/` folder exists with documentation
 
 ### Empty responses from reasoning models
+
 - **Increase `MAX_COMPLETION_TOKENS`** - Reasoning models (gpt-5-mini/nano) use tokens for thinking
 - Set to at least 4000 tokens to allow room for reasoning + output
 - Check debug logs for `"reasoning_tokens"` usage
 - If `"content": ""` and `"finish_reason": "length"`, increase token limit
 
 ### Bot responds twice to @mentions
+
 - Fixed in current version - bot now skips duplicate message events
 - If still happening, check Event Subscriptions aren't duplicated
 
 ### Poor quality responses
+
 - Try increasing `MAX_CHUNKS` to include more context (e.g., 10)
 - Increase `CHUNK_SIZE` for larger context per chunk (e.g., 3000)
 - Check that `_instructions.md` has clear guidelines
 - Verify documentation is well-organized and clear
 
 ### Startup is slow
+
 - Normal: 30-60 seconds to download embedding model and process docs
 - Model is cached after first run
 - Consider reducing doc size or number of chunks if too slow
 
 ### Rate limiting issues
+
 - Adjust `RESPONSE_COOLDOWN_SECONDS` in `.env`
 - Remember: rate limiting only applies to ambient mode, not @mentions
 - Check rate limit map isn't growing unbounded (add cleanup for production)
@@ -438,6 +412,7 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 ## Credits
 
 Built with:
+
 - [Slack Web API](https://slack.dev/node-slack-sdk/)
 - [OpenAI API](https://platform.openai.com/)
 - [Transformers.js](https://huggingface.co/docs/transformers.js) - Local embeddings

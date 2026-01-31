@@ -1,0 +1,58 @@
+{
+  "display_information": {
+    "name": "DaSilva - Product Champion"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "DaSilva - Product Champion",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/dasilva",
+        "url": "<https://YOUR.BOT.URL>/slack/commands",
+        "description": "Interact with DaSilva Bot",
+        "usage_hint": "help | silence | unsilence | cooldown <minutes>",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "canvases:read",
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "commands",
+        "files:read",
+        "groups:history",
+        "im:write",
+        "incoming-webhook",
+        "reactions:read",
+        "users:read",
+        "reactions:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "<https://YOUR.BOT.URL>/slack/events",
+      "bot_events": [
+        "app_mention",
+        "file_shared",
+        "message.channels",
+        "message.groups",
+        "reaction_added"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "<https://YOUR.BOT.URL>/slack/interactions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

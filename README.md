@@ -155,6 +155,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
 | `MODEL`                     | gpt-5-mini                | OpenAI model (gpt-5-mini or gpt-5-nano)                         |
 | `MAX_COMPLETION_TOKENS`     | 4000                      | Max tokens for response (reasoning models need 4000+)           |
 | `RESPONSE_COOLDOWN_SECONDS` | 300                       | Cooldown between ambient responses to same user (5 min)         |
+| `AMBIENT_MIN_SCORE`         | 0.3                       | Minimum chunk similarity score for ambient responses (0.0-1.0)  |
 | `CHUNK_SIZE`                | 2000                      | Characters per documentation chunk                              |
 | `MAX_CHUNKS`                | 5                         | Number of chunks to include in context                          |
 | `THREAD_CONTEXT_MESSAGES`   | 10                        | Number of prior thread messages to include for context          |

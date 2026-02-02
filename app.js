@@ -34,6 +34,7 @@ const AMBIENT_MODE = process.env.AMBIENT_MODE === "true";
 const LOG_CHANNEL = process.env.LOG_CHANNEL || null;
 const FEEDBACK_EMOJI = process.env.FEEDBACK_EMOJI || "feedback";
 const FEEDBACK_CHANNEL = process.env.FEEDBACK_CHANNEL || null;
+const AMBIENT_MIN_SCORE = parseFloat(process.env.AMBIENT_MIN_SCORE) || 0.3; // Minimum chunk similarity score for ambient responses
 
 // Logging helpers: always log to console, optionally forward to a Slack channel
 
@@ -612,7 +613,7 @@ app.post("/slack/events", async (req, res) => {
   res.status(200).send();
 
   // Log all incoming events for debugging
-  debug(`Event received: type=${event?.type}, subtype=${event?.subtype}`);
+  // debug(`Event received: type=${event?.type}, subtype=${event?.subtype}`);
 
   // Handle file_shared events
   if (event && event.type === "file_shared") {
@@ -1168,12 +1169,6 @@ async function handleChannelMessage(event) {
 
     debug(`Ambient Mode: ${AMBIENT_MODE}`);
 
-    // Check if user has silenced themselves
-    if (userPrefs.isUserSilenced(userId)) {
-      debug(`Skipping - user ${userId} is silenced`);
-      return;
-    }
-
     // Smart filter: Only respond to questions/requests
     if (!looksLikeQuestion(text)) {
       debug("Skipping - does not look like a question");
@@ -1185,10 +1180,6 @@ async function handleChannelMessage(event) {
       debug(`Skipping - user ${userId} in cooldown period`);
       return;
     }
-
-    log(
-      `[${channelId}]: ambient request received from user ${userId} (msg: ${event.ts})`,
-    );
 
     // Get instructions (always included)
     const instructions =
@@ -1211,6 +1202,31 @@ async function handleChannelMessage(event) {
 
     debug(
       `Found ${relevantChunks.length} relevant chunks out of ${allChunks.length} total`,
+    );
+
+    // For ambient messages, check if the best chunk score meets the minimum threshold
+    // If no chunks are relevant enough, skip the OpenAI call entirely
+    const topScore = relevantChunks.length > 0 ? relevantChunks[0].score : 0;
+
+    log(
+      `[${channelId}]: ambient from user ${userId} (msg: ${event.ts}) (score: ${topScore}) (silencedStatus: ${userPrefs.isUserSilenced(userId)})`,
+    );
+
+    if (topScore < AMBIENT_MIN_SCORE) {
+      log(
+        `[${channelId}]: ambient skipped for user ${userId} - top chunk score ${topScore.toFixed(3)} below threshold ${AMBIENT_MIN_SCORE}`,
+      );
+      return;
+    }
+
+    // Check if user has silenced themselves
+    if (userPrefs.isUserSilenced(userId)) {
+      debug(`Skipping - user ${userId} is silenced`);
+      return;
+    }
+
+    debug(
+      `Top chunk score: ${topScore.toFixed(3)} (threshold: ${AMBIENT_MIN_SCORE})`,
     );
 
     const docsContext =
@@ -1255,6 +1271,29 @@ async function handleChannelMessage(event) {
     if (!reply || reply.trim().length === 0) {
       log(
         `[${channelId}]: ambient response NOT sent to user ${userId} (out of scope or not relevant)`,
+      );
+      return;
+    }
+
+    // Suppress responses where the model says it can't answer (not trained, out of scope, etc.)
+    const replyLower = reply.toLowerCase();
+    const declinePatterns = [
+      "not been trained",
+      "not trained",
+      "outside the scope",
+      "outside of the scope",
+      "don't have information",
+      "do not have information",
+      "no relevant documentation",
+      "not covered by the documentation",
+      "cannot answer",
+      "can't answer",
+      "unable to answer",
+      "not able to answer",
+    ];
+    if (declinePatterns.some((pattern) => replyLower.includes(pattern))) {
+      log(
+        `[${channelId}]: ambient response suppressed for user ${userId} (model declined to answer)`,
       );
       return;
     }

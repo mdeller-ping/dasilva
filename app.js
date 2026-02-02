@@ -21,8 +21,9 @@ const RESPONSE_COOLDOWN_SECONDS =
   parseInt(process.env.RESPONSE_COOLDOWN_SECONDS) || 300; // 5 minutes default
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MODEL = process.env.MODEL || "gpt-5-mini"; // OpenAI model to use
-const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 2000; // Characters per chunk
-const MAX_CHUNKS = parseInt(process.env.MAX_CHUNKS) || 5; // Number of chunks to include
+const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 1200; // Characters per chunk
+const CHUNK_OVERLAP = parseFloat(process.env.CHUNK_OVERLAP) || 0.15; // Fraction of chunk size to overlap (0.0 - 0.5)
+const MAX_CHUNKS = parseInt(process.env.MAX_CHUNKS) || 10; // Number of chunks to include
 const THREAD_CONTEXT_MESSAGES =
   parseInt(process.env.THREAD_CONTEXT_MESSAGES) || 10; // Thread history messages to include
 const HELP_FOOTER = "\n\n_Type `/dasilva help` for more information_";
@@ -217,11 +218,13 @@ async function initializeDocumentation() {
   isInitialized = true;
 }
 
-// Helper: Split text into chunks
+// Helper: Split text into chunks with overlap for better context continuity
 function chunkText(text, chunkSize) {
   const chunks = [];
   const paragraphs = text.split("\n\n");
   let currentChunk = "";
+  // Track paragraph indices that belong to each chunk so we can build overlap
+  let currentParagraphs = [];
 
   for (const paragraph of paragraphs) {
     if (
@@ -229,8 +232,24 @@ function chunkText(text, chunkSize) {
       currentChunk.length > 0
     ) {
       chunks.push(currentChunk.trim());
-      currentChunk = paragraph;
+
+      // Build overlap: carry the last 1-2 paragraphs into the next chunk
+      // to preserve context across chunk boundaries
+      const overlapTarget = Math.floor(chunkSize * CHUNK_OVERLAP);
+      let overlapText = "";
+      const overlapParagraphs = [];
+      for (let i = currentParagraphs.length - 1; i >= 0; i--) {
+        const candidate =
+          currentParagraphs[i] + (overlapText ? "\n\n" : "") + overlapText;
+        if (candidate.length > overlapTarget) break;
+        overlapText = candidate;
+        overlapParagraphs.unshift(currentParagraphs[i]);
+      }
+
+      currentParagraphs = [...overlapParagraphs, paragraph];
+      currentChunk = overlapText ? overlapText + "\n\n" + paragraph : paragraph;
     } else {
+      currentParagraphs.push(paragraph);
       currentChunk += (currentChunk ? "\n\n" : "") + paragraph;
     }
   }
@@ -274,8 +293,44 @@ async function findRelevantChunks(chunks, query, maxChunks) {
     score: cosineSimilarity(queryVector, chunk.embedding),
   }));
 
-  // Return top matches
-  return scoredChunks.sort((a, b) => b.score - a.score).slice(0, maxChunks);
+  // Select initial top matches
+  const topChunks = scoredChunks
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxChunks);
+
+  // Expand with neighboring chunks from the same source file.
+  // When a chunk scores highly, its adjacent chunks (±1) likely contain
+  // related context that helps the LLM produce more complete answers.
+  const selectedKeys = new Set(
+    topChunks.map((c) => `${c.source}:${c.chunkIndex}`),
+  );
+  const neighbors = [];
+
+  for (const chunk of topChunks) {
+    for (const offset of [-1, 1]) {
+      const neighborIndex = chunk.chunkIndex + offset;
+      const key = `${chunk.source}:${neighborIndex}`;
+      if (selectedKeys.has(key)) continue; // already included
+
+      const neighbor = scoredChunks.find(
+        (c) => c.source === chunk.source && c.chunkIndex === neighborIndex,
+      );
+      if (neighbor) {
+        selectedKeys.add(key);
+        neighbors.push({ ...neighbor, expandedFrom: chunk.chunkIndex });
+      }
+    }
+  }
+
+  // Merge: original top chunks + neighbors, then sort by source and position
+  // so the LLM sees documentation in reading order
+  const merged = [...topChunks, ...neighbors];
+  merged.sort((a, b) => {
+    if (a.source !== b.source) return a.source.localeCompare(b.source);
+    return a.chunkIndex - b.chunkIndex;
+  });
+
+  return merged;
 }
 
 // Helper: Check if message looks like a question that needs answering

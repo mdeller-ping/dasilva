@@ -912,8 +912,10 @@ async function handleReactionAdded(event) {
       item_user: messageAuthorId,
     } = event;
 
+    debug(`${console.dir(reaction)}`);
+
     // Only process the configured feedback emoji
-    if (reaction !== FEEDBACK_EMOJI) {
+    if (reaction.split(":")[0] !== FEEDBACK_EMOJI) {
       debug(`Ignoring reaction: ${reaction} (not feedback emoji)`);
       return;
     }

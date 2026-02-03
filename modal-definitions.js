@@ -28,7 +28,7 @@ function leaveChannelModal(channelId) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `DaSilva will no longer monitor channel \`${channelId}\`.\n\nThis will remove all indexed documentation from the bot.`,
+          text: `DaSilva will no longer monitor channel \`${channelId}\`.\n\nThis will remove the channel subscription and any vector store configuration.`,
         },
       },
       {
@@ -100,6 +100,10 @@ function feedbackModal(channel, messageTs) {
           },
           options: [
             {
+              text: { type: "plain_text", text: "Helpful" },
+              value: "helpful",
+            },
+            {
               text: { type: "plain_text", text: "Inaccurate" },
               value: "inaccurate",
             },
@@ -108,7 +112,7 @@ function feedbackModal(channel, messageTs) {
               value: "incomplete",
             },
             {
-              text: { type: "plain_text", text: "Outdated docs" },
+              text: { type: "plain_text", text: "Outdated" },
               value: "outdated_docs",
             },
             {

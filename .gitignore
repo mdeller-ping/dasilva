@@ -17,6 +17,7 @@ env.local
 
 # Configuration with sensitive IDs
 channel-config.json
+channel-preferences.json
 user-preferences.json
 
 # channels - exclude folder for channel specific documentation

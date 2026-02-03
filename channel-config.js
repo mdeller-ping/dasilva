@@ -3,7 +3,6 @@ const path = require('path');
 
 const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
 const CHANNELS_DIR = path.join(STORAGE_BASE, 'channels');
-const INSTRUCTIONS_FILE = '_instructions.md';
 
 /**
  * Check if a channel exists (has a directory)
@@ -111,6 +110,5 @@ module.exports = {
   channelExists,
   subscribe,
   leave,
-  CHANNELS_DIR,
-  INSTRUCTIONS_FILE
+  CHANNELS_DIR
 };

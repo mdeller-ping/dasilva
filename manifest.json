@@ -21,12 +21,10 @@
     "scopes": {
       "bot": [
         "app_mentions:read",
-        "canvases:read",
         "channels:history",
         "channels:read",
         "chat:write",
         "commands",
-        "files:read",
         "groups:history",
         "im:write",
         "incoming-webhook",
@@ -41,7 +39,6 @@
       "request_url": "<https://YOUR.BOT.URL>/slack/events",
       "bot_events": [
         "app_mention",
-        "file_shared",
         "message.channels",
         "message.groups",
         "reaction_added"

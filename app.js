@@ -485,15 +485,13 @@ app.post("/slack/events", async (req, res) => {
   // Ignore bot messages and subtypes (edits, joins, etc.)
   if (event.bot_id || event.subtype) return;
 
-  // @mention → always reply publicly in thread
-  if (event.type === "app_mention") {
-    return replyPublic(event);
-  }
-
   // Regular channel messages
   if (event.type === "message") {
-    // Skip messages with mentions (already handled by app_mention above)
-    if (event.text?.match(/<@[A-Z0-9]+>/)) return;
+    // if bot was mentioned, always reply
+
+    if (event.text?.includes(`<@${botUserId}>`)) {
+      return replyPublic(event);
+    }
 
     // Active thread follow-up → reply publicly (continue the conversation)
     if (

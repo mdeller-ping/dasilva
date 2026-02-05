@@ -107,8 +107,8 @@ let botUserId = null;
 const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 30000, // 30 second timeout
-  maxRetries: 2, // Retry twice on failure
+  timeout: process.env.OPENAI_API_TIMEOUT || 30000, // 30 second timeout
+  maxRetries: 0, // Retry twice on failure
 });
 
 // Is optional PERSISTENT_STORAGE value set?
@@ -746,6 +746,59 @@ function getChannelContext(channelId) {
   return { config, vectorId };
 }
 
+function summarizeOpenAIError(err) {
+  return {
+    name: err?.name,
+    message: err?.message,
+    type: err?.type,
+    code: err?.code,
+    status: err?.status,
+    requestID: err?.requestID,
+    headers: err?.headers
+      ? {
+          "x-request-id": err.headers["x-request-id"],
+          "openai-processing-ms": err.headers["openai-processing-ms"],
+          "retry-after": err.headers["retry-after"],
+        }
+      : undefined,
+  };
+}
+
+function summarizeOpenAIResponse(response) {
+  const output = response?.output ?? [];
+  const first = output[0];
+
+  return {
+    id: response?.id,
+    model: response?.model,
+
+    status: response?.status, // <-- ADD
+    incomplete_reason: response?.incomplete_details?.reason, // <-- ADD
+    error: response?.error
+      ? {
+          code: response.error.code,
+          message: response.error.message,
+          type: response.error.type,
+        }
+      : undefined,
+
+    usage: response?.usage
+      ? {
+          input_tokens: response.usage.input_tokens,
+          output_tokens: response.usage.output_tokens,
+          total_tokens: response.usage.total_tokens,
+        }
+      : undefined,
+
+    output_text_len: response?.output_text?.length ?? 0,
+    output_count: output.length,
+    output_types: output.map((o) => o?.type).filter(Boolean),
+
+    finish_reason:
+      first?.finish_reason ?? first?.content?.[0]?.finish_reason ?? undefined,
+  };
+}
+
 // Call OpenAI with file_search against the channel's vector store
 async function callOpenAI(text, vectorId, threadHistory = []) {
   const instructions = fs.readFileSync(
@@ -788,17 +841,78 @@ async function replyPublic(event) {
     ? await getThreadHistory(channelId, event.thread_ts, ts)
     : [];
 
+  // try {
+  //   const response = await callOpenAI(userMessage, ctx.vectorId, threadHistory);
+  //   const reply = response.output_text;
+
+  //   if (!reply?.trim()) {
+  //     await slackClient.chat.postMessage({
+  //       channel: channelId,
+  //       thread_ts: threadTs,
+  //       text: "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.",
+  //     });
+  //     log(`[${channelId}]: empty llm response returned for thread ${threadTs}`);
+  //     return;
+  //   }
+
+  //   await slackClient.chat.postMessage({
+  //     channel: channelId,
+  //     thread_ts: threadTs,
+  //     text: reply,
+  //   });
+
+  //   activeThreads.set(`${channelId}:${threadTs}`, Date.now());
+  //   log(
+  //     `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs}`,
+  //   );
+  // } catch (error) {
+  //   logError("Error in replyPublic:", error);
+  //   try {
+  //     await slackClient.chat.postMessage({
+  //       channel: channelId,
+  //       thread_ts: threadTs,
+  //       text: "Sorry, I encountered an error processing your request.",
+  //     });
+  //   } catch (slackError) {
+  //     logError("Error sending error message to Slack:", slackError);
+  //   }
+  // }
+
   try {
     const response = await callOpenAI(userMessage, ctx.vectorId, threadHistory);
     const reply = response.output_text;
 
     if (!reply?.trim()) {
+      let openAIResponse = JSON.stringify(summarizeOpenAIResponse(response));
+      let reasonText = "";
+
+      if (
+        openAIResponse.status == "incomplete" &&
+        openAIResponse.incomplete_reason == "max_output_tokens"
+      ) {
+        // ran out of output tokens
+        log(
+          `[${channelId}]: llm ran out of response tokens for thread ${threadTs}`,
+        );
+        let reasonText =
+          "I was unable to answer due to complexity. Please try to rephrase your question.";
+      } else if (openAIResponse.status == "completed") {
+        // ran out of output tokens
+        log(`[${channelId}]: llm untrained response for thread ${threadTs}`);
+        let reasonText =
+          "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.";
+      }
+      // Log *why* it was empty
+      log(
+        `[${channelId}]: empty llm response for thread ${threadTs} ${openAIResponse}`,
+      );
+
       await slackClient.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,
-        text: "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.",
+        text: reasonText,
       });
-      log(`[${channelId}]: empty llm response returned for thread ${threadTs}`);
+
       return;
     }
 
@@ -809,11 +923,27 @@ async function replyPublic(event) {
     });
 
     activeThreads.set(`${channelId}:${threadTs}`, Date.now());
+
     log(
-      `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs}`,
+      `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs} ` +
+        JSON.stringify({
+          id: response.id,
+          usage: response.usage,
+        }),
     );
   } catch (error) {
-    logError("Error in replyPublic:", error);
+    // Distinguish OpenAI errors from Slack errors
+    const isLikelyOpenAI =
+      error?.name?.includes("OpenAI") ||
+      error?.requestID ||
+      typeof error?.status === "number";
+
+    if (isLikelyOpenAI) {
+      logError("Error in replyPublic (OpenAI):", summarizeOpenAIError(error));
+    } else {
+      logError("Error in replyPublic:", error);
+    }
+
     try {
       await slackClient.chat.postMessage({
         channel: channelId,
@@ -821,7 +951,12 @@ async function replyPublic(event) {
         text: "Sorry, I encountered an error processing your request.",
       });
     } catch (slackError) {
-      logError("Error sending error message to Slack:", slackError);
+      logError("Error sending error message to Slack:", {
+        name: slackError?.name,
+        message: slackError?.message,
+        code: slackError?.code,
+        data: slackError?.data, // slack web api often includes useful detail here
+      });
     }
   }
 }

@@ -557,6 +557,28 @@ app.post(
           return res.status(200).send();
         }
 
+        if (action?.action_id === "promote_to_public") {
+          const { channel, messageTs, reply } = JSON.parse(action.value);
+
+          try {
+            // Post public reply to the original message
+            await slackClient.chat.postMessage({
+              channel: channel,
+              thread_ts: messageTs,
+              text: reply,
+            });
+
+            // Delete the ephemeral message
+            if (payload.response_url) {
+              await axios.post(payload.response_url, { delete_original: true });
+            }
+          } catch (error) {
+            logError("Error promoting ephemeral to public:", error);
+          }
+
+          return res.status(200).send();
+        }
+
         return res.status(200).send();
       }
 
@@ -972,7 +994,7 @@ async function replyEphemeral(event) {
   if (!shouldRespondToUser(channelId, userId)) return;
   if (userPrefs.isUserSilenced(userId)) return;
 
-  log(`[${channelId}]: ambient question from ${userId} (msg: ${event.ts})`);
+  log(`[${channelId}]: ambient request from ${userId} (msg: ${event.ts})`);
 
   try {
     const response = await callOpenAI(text, ctx.vectorId);
@@ -1013,6 +1035,33 @@ async function replyEphemeral(event) {
       channel: channelId,
       user: userId,
       text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "Promote to public thread",
+              },
+              action_id: "promote_to_public",
+              value: JSON.stringify({
+                channel: channelId,
+                messageTs: event.ts,
+                reply: reply,
+              }),
+            },
+          ],
+        },
+      ],
     });
 
     recordResponse(channelId, userId);

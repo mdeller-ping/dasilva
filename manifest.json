@@ -1,6 +1,8 @@
 {
   "display_information": {
-    "name": "DaSilva - Product Champion"
+    "name": "DaSilva Bot",
+    "description": "Product Champion",
+    "background_color": "#051727"
   },
   "features": {
     "bot_user": {

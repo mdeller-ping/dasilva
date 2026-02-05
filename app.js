@@ -1069,18 +1069,22 @@ async function replyEphemeral(event) {
       `[${channelId}]: ephemeral response (${response.usage?.total_tokens || 0} tokens) for ${userId}`,
     );
   } catch (error) {
-    logError("Error in replyEphemeral:", error);
-    try {
-      await slackClient.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text:
-          "Sorry, I encountered an error processing your message. Please try again." +
-          HELP_FOOTER,
-      });
-    } catch (slackError) {
-      logError("Error sending error message to Slack:", slackError);
-    }
+    log(
+      `[${channelId}]: unable to send ephemeral message response to ${userId}`,
+    );
+
+    // logError("Error in replyEphemeral:", error);
+    // try {
+    //   await slackClient.chat.postEphemeral({
+    //     channel: channelId,
+    //     user: userId,
+    //     text:
+    //       "Sorry, I encountered an error processing your message. Please try again." +
+    //       HELP_FOOTER,
+    //   });
+    // } catch (slackError) {
+    //   logError("Error sending error message to Slack:", slackError);
+    // }
   }
 }
 

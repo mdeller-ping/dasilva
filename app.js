@@ -24,7 +24,7 @@ const MODEL = process.env.MODEL || "gpt-5-mini"; // OpenAI model to use
 const THREAD_CONTEXT_MESSAGES =
   parseInt(process.env.THREAD_CONTEXT_MESSAGES) || 10; // Thread history messages to include
 const HELP_FOOTER = "\n\n_Type `/dasilva help` for more information_";
-const ADMIN_USERS = (process.env.ADMIN_USERS || "")
+const GLOBAL_ADMINS = (process.env.GLOBAL_ADMINS || "")
   .split(",")
   .map((id) => id.trim())
   .filter(Boolean);
@@ -75,9 +75,14 @@ function debug(...args) {
   }
 }
 
+// Helper: post a threaded reply in Slack
+function postThreadReply(channel, threadTs, text) {
+  return slackClient.chat.postMessage({ channel, thread_ts: threadTs, text });
+}
+
 // Helper to check if user is admin
 function isAdmin(userId) {
-  return ADMIN_USERS.includes(userId);
+  return GLOBAL_ADMINS.includes(userId);
 }
 
 // Rate limiting: Track last response time per user per channel
@@ -181,7 +186,9 @@ function shouldRespondToUser(channelId, userId) {
 
   const timeSinceLastResponse = (Date.now() - lastTime) / 1000;
 
-  debug`[${channelId}]: cooldown timer ${userId}: ${timeSinceLastResponse >= cooldown}`;
+  debug(
+    `[${channelId}]: cooldown timer ${userId}: ${timeSinceLastResponse >= cooldown}`,
+  );
   return timeSinceLastResponse >= cooldown;
 }
 
@@ -298,7 +305,9 @@ I monitor specific channels and help answer questions.
       userPrefs.updateUserPreference(userId, { silenced: false });
       responseText =
         "You'll now receive ambient responses when you ask questions.";
-      log(`User ${userId} disabled silence mode via slash command`);
+      log(
+        `[${channelId}]: User ${userId} disabled silence mode via slash command`,
+      );
     } else if (args.startsWith("cooldown ")) {
       const minutesMatch = args.match(/^cooldown\s+(\d+)$/);
       if (!minutesMatch) {
@@ -316,7 +325,7 @@ I monitor specific channels and help answer questions.
           const minuteText = minutes === 1 ? "minute" : "minutes";
           responseText = `Your cooldown has been set to ${minutes} ${minuteText}.`;
           log(
-            `User ${userId} set custom cooldown to ${minutes} minutes via slash command`,
+            `[${channelId}]: User ${userId} set custom cooldown to ${minutes} minutes via slash command`,
           );
         }
       }
@@ -334,7 +343,7 @@ I monitor specific channels and help answer questions.
 
           if (result.success) {
             responseText = `Channel <#${channelId}> subscribed successfully! Use \`/dasilva addvector <vector_id>\` to connect an OpenAI vector store.`;
-            log(`Channel ${channelId} added by admin ${userId}`);
+            log(`[${channelId}]: channel subscribed by admin ${userId}`);
           } else {
             responseText = `Failed to add channel: ${result.error}`;
           }
@@ -490,7 +499,7 @@ app.post("/slack/events", async (req, res) => {
     // if bot was mentioned, always reply
 
     if (event.text?.includes(`<@${botUserId}>`)) {
-      return replyPublic(event);
+      return handleMention(event);
     }
 
     // Active thread follow-up → reply publicly (continue the conversation)
@@ -498,14 +507,14 @@ app.post("/slack/events", async (req, res) => {
       event.thread_ts &&
       activeThreads.has(`${event.channel}:${event.thread_ts}`)
     ) {
-      return replyPublic(event);
+      return handleMention(event);
     }
 
     // Non-active thread → ignore (don't jump into unrelated threads)
     if (event.thread_ts) return;
 
     // Root channel message → ephemeral reply if it's a question
-    return replyEphemeral(event);
+    return handleAmbient(event);
   }
 });
 
@@ -560,13 +569,13 @@ app.post(
         if (action?.action_id === "promote_to_public") {
           const { channel, messageTs, reply } = JSON.parse(action.value);
 
+          log(
+            `[${channel}]: promoting ephemeral response (msg: ${messageTs}) requested by ${user.id}`,
+          );
+
           try {
             // Post public reply to the original message
-            await slackClient.chat.postMessage({
-              channel: channel,
-              thread_ts: messageTs,
-              text: reply,
-            });
+            await postThreadReply(channel, messageTs, reply);
 
             // Delete the ephemeral message
             if (payload.response_url) {
@@ -786,6 +795,15 @@ function summarizeOpenAIError(err) {
   };
 }
 
+function summarizeSlackError(err) {
+  return {
+    name: err?.name,
+    message: err?.message,
+    code: err?.code,
+    data: err?.data,
+  };
+}
+
 function summarizeOpenAIResponse(response) {
   const output = response?.output ?? [];
   const first = output[0];
@@ -837,11 +855,11 @@ async function callOpenAI(text, vectorId, threadHistory = []) {
 }
 
 // Reply publicly in a thread (@mentions and active thread follow-ups)
-async function replyPublic(event) {
+async function handleMention(event) {
   const { text, channel: channelId, ts, user: userId } = event;
   const threadTs = event.thread_ts || ts;
 
-  log(`[${channelId}]: public request from ${userId} in thread ${threadTs}`);
+  log(`[${channelId}]: mention request from ${userId} in thread ${threadTs}`);
 
   const ctx = getChannelContext(channelId);
   if (!ctx) {
@@ -849,11 +867,7 @@ async function replyPublic(event) {
       ? "Sorry, I'm not configured for this channel yet."
       : "Sorry, I'm not trained for this channel yet.";
     log(`[${channelId}]: ${msg}`);
-    await slackClient.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: msg,
-    });
+    await postThreadReply(channelId, threadTs, msg);
 
     return;
   }
@@ -863,95 +877,52 @@ async function replyPublic(event) {
     ? await getThreadHistory(channelId, event.thread_ts, ts)
     : [];
 
-  // try {
-  //   const response = await callOpenAI(userMessage, ctx.vectorId, threadHistory);
-  //   const reply = response.output_text;
-
-  //   if (!reply?.trim()) {
-  //     await slackClient.chat.postMessage({
-  //       channel: channelId,
-  //       thread_ts: threadTs,
-  //       text: "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.",
-  //     });
-  //     log(`[${channelId}]: empty llm response returned for thread ${threadTs}`);
-  //     return;
-  //   }
-
-  //   await slackClient.chat.postMessage({
-  //     channel: channelId,
-  //     thread_ts: threadTs,
-  //     text: reply,
-  //   });
-
-  //   activeThreads.set(`${channelId}:${threadTs}`, Date.now());
-  //   log(
-  //     `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs}`,
-  //   );
-  // } catch (error) {
-  //   logError("Error in replyPublic:", error);
-  //   try {
-  //     await slackClient.chat.postMessage({
-  //       channel: channelId,
-  //       thread_ts: threadTs,
-  //       text: "Sorry, I encountered an error processing your request.",
-  //     });
-  //   } catch (slackError) {
-  //     logError("Error sending error message to Slack:", slackError);
-  //   }
-  // }
-
   try {
     const response = await callOpenAI(userMessage, ctx.vectorId, threadHistory);
     const reply = response.output_text;
 
     if (!reply?.trim()) {
-      let openAIResponse = JSON.stringify(summarizeOpenAIResponse(response));
+      const responseSummary = summarizeOpenAIResponse(response);
       let reasonText = "";
 
       if (
-        openAIResponse.status == "incomplete" &&
-        openAIResponse.incomplete_reason == "max_output_tokens"
+        responseSummary.status === "incomplete" &&
+        responseSummary.incomplete_reason === "max_output_tokens"
       ) {
-        // ran out of output tokens
         log(
           `[${channelId}]: llm ran out of response tokens for thread ${threadTs}`,
         );
-        let reasonText =
+        reasonText =
           "I was unable to answer due to complexity. Please try to rephrase your question.";
-      } else if (openAIResponse.status == "completed") {
-        // ran out of output tokens
+      } else if (responseSummary.status === "completed") {
         log(`[${channelId}]: llm untrained response for thread ${threadTs}`);
-        let reasonText =
+        reasonText =
           "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.";
+      } else {
+        log(
+          `[${channelId}]: llm empty response with unexpected status for thread ${threadTs}`,
+        );
+        reasonText =
+          "Sorry, I encountered an unexpected issue processing your request.";
       }
-      // Log *why* it was empty
+
       log(
-        `[${channelId}]: empty llm response for thread ${threadTs} ${openAIResponse}`,
+        `[${channelId}]: empty llm response for thread ${threadTs}`,
+        JSON.stringify(responseSummary),
       );
 
-      await slackClient.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: reasonText,
-      });
+      await postThreadReply(channelId, threadTs, reasonText);
 
       return;
     }
 
-    await slackClient.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: reply,
-    });
+    await postThreadReply(channelId, threadTs, reply);
 
     activeThreads.set(`${channelId}:${threadTs}`, Date.now());
 
     log(
-      `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs} ` +
-        JSON.stringify({
-          id: response.id,
-          usage: response.usage,
-        }),
+      `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs}`,
+      JSON.stringify(summarizeOpenAIResponse(response)),
     );
   } catch (error) {
     // Distinguish OpenAI errors from Slack errors
@@ -961,30 +932,28 @@ async function replyPublic(event) {
       typeof error?.status === "number";
 
     if (isLikelyOpenAI) {
-      logError("Error in replyPublic (OpenAI):", summarizeOpenAIError(error));
+      logError("Error in handleMention (OpenAI):", summarizeOpenAIError(error));
     } else {
-      logError("Error in replyPublic:", error);
+      logError("Error in handleMention:", error);
     }
 
     try {
-      await slackClient.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: "Sorry, I encountered an error processing your request.",
-      });
+      await postThreadReply(
+        channelId,
+        threadTs,
+        "Sorry, I encountered an error processing your request.",
+      );
     } catch (slackError) {
-      logError("Error sending error message to Slack:", {
-        name: slackError?.name,
-        message: slackError?.message,
-        code: slackError?.code,
-        data: slackError?.data, // slack web api often includes useful detail here
-      });
+      logError(
+        "Error sending error message to Slack:",
+        summarizeSlackError(slackError),
+      );
     }
   }
 }
 
 // Reply ephemerally to ambient questions in root channel messages
-async function replyEphemeral(event) {
+async function handleAmbient(event) {
   const { text, user: userId, channel: channelId } = event;
 
   const ctx = getChannelContext(channelId);
@@ -998,13 +967,13 @@ async function replyEphemeral(event) {
 
   try {
     const response = await callOpenAI(text, ctx.vectorId);
-    debug(`${console.dir(response)}`);
+    debug("OpenAI response:", response);
 
     const reply = response.output_text;
 
     if (!reply?.trim()) {
       log(
-        `[${channelId}]: ambient response suppressed for ${userId} (empty reply)`,
+        `[${channelId}]: ephemeral response suppressed for ${userId} (empty reply)`,
       );
       return;
     }
@@ -1026,7 +995,7 @@ async function replyEphemeral(event) {
     ];
     if (declinePatterns.some((p) => reply.toLowerCase().includes(p))) {
       log(
-        `[${channelId}]: ambient response suppressed for ${userId} (model declined)`,
+        `[${channelId}]: ephemeral response suppressed for ${userId} (model declined)`,
       );
       return;
     }
@@ -1067,24 +1036,25 @@ async function replyEphemeral(event) {
     recordResponse(channelId, userId);
     log(
       `[${channelId}]: ephemeral response (${response.usage?.total_tokens || 0} tokens) for ${userId}`,
+      JSON.stringify(summarizeOpenAIResponse(response)),
     );
   } catch (error) {
-    log(
-      `[${channelId}]: unable to send ephemeral message response to ${userId}`,
-    );
+    const isLikelyOpenAI =
+      error?.name?.includes("OpenAI") ||
+      error?.requestID ||
+      typeof error?.status === "number";
 
-    // logError("Error in replyEphemeral:", error);
-    // try {
-    //   await slackClient.chat.postEphemeral({
-    //     channel: channelId,
-    //     user: userId,
-    //     text:
-    //       "Sorry, I encountered an error processing your message. Please try again." +
-    //       HELP_FOOTER,
-    //   });
-    // } catch (slackError) {
-    //   logError("Error sending error message to Slack:", slackError);
-    // }
+    if (isLikelyOpenAI) {
+      logError(
+        `[${channelId}]: error in handleAmbient (OpenAI) for ${userId}:`,
+        summarizeOpenAIError(error),
+      );
+    } else {
+      logError(
+        `[${channelId}]: error in handleAmbient (Slack) for ${userId}:`,
+        summarizeSlackError(error),
+      );
+    }
   }
 }
 
@@ -1098,7 +1068,7 @@ async function handleReactionAdded(event) {
       item_user: messageAuthorId,
     } = event;
 
-    debug(`${console.dir(reaction)}`);
+    debug("Reaction event:", reaction);
 
     // Only process the configured feedback emoji
     if (reaction.split(":")[0] !== FEEDBACK_EMOJI) {

@@ -161,7 +161,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
 | `THREAD_CONTEXT_MESSAGES`   | 10                        | Number of prior thread messages to include for context          |
 | `DEBUG_MODE`                | false                     | Enable verbose logging including token counts                   |
 | `AMBIENT_MODE`              | false                     | when false, users must opt in via unsilence                     |
-| `ADMIN_USERS`               |                           | comma delimited Slack IDs (ADMIN_USERS=U01234ABCDE,U56789FGHIJ) |
+| `GLOBAL_ADMINS`               |                           | comma delimited Slack IDs (GLOBAL_ADMINS=U01234ABCDE,U56789FGHIJ) |
 | `PERSISTENT_STORAGE`        |                           | optional path to persistent storage                             |
 | `LOG_CHANNEL`               |                           | Slack channel ID to receive copies of log messages              |
 | `OPENAI_API_KEY`            | your-openai-key           | replace with your OpenAI API Key                                |
@@ -178,7 +178,7 @@ OPENAI_API_KEY=sk-your-openai-key-here
 
 ```bash
 # Admin users who can configure channels (comma-separated Slack user IDs)
-ADMIN_USERS=U01234ABCDE,U56789FGHIJ
+GLOBAL_ADMINS=U01234ABCDE,U56789FGHIJ
 ```
 
 ### Channel Configuration
@@ -229,7 +229,7 @@ No bot restart required! Documentation is available immediately.
 
 **"You must be an admin" message:**
 
-- Verify your Slack user ID is in the `ADMIN_USERS` environment variable
+- Verify your Slack user ID is in the `GLOBAL_ADMINS` environment variable
 - Restart the bot after adding your user ID to `.env`
 
 **Modal doesn't open:**
@@ -356,7 +356,7 @@ Admins can upload documentation directly through Slack using Canvas folders, wit
 
 ### Upload Requirements
 
-- **Admin only**: Only users listed in `ADMIN_USERS` env variable can upload
+- **Admin only**: Only users listed in `GLOBAL_ADMINS` env variable can upload
 - **Supported formats**: `.md`, `.txt`, `.markdown`, `.text` files only
 - **Automatic processing**: File is immediately processed and made available to the bot
 

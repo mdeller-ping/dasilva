@@ -1,9 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const AMBIENT_MODE = process.env.AMBIENT_MODE === 'true';
+const fs = require("fs");
+const path = require("path");
+const logger = require("./logger");
+const AMBIENT_MODE = process.env.AMBIENT_MODE === "true";
 
 const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
-const PREFS_FILE = path.join(STORAGE_BASE, 'user-preferences.json');
+const PREFS_FILE = path.join(STORAGE_BASE, "user-preferences.json");
 
 // In-memory cache
 let preferencesCache = null;
@@ -30,29 +31,29 @@ function loadPreferences() {
 
         // Reload if file changed or cache is empty
         if (preferencesCache === null || lastModified !== currentModified) {
-          const data = fs.readFileSync(PREFS_FILE, 'utf8');
+          const data = fs.readFileSync(PREFS_FILE, "utf8");
           preferencesCache = JSON.parse(data);
           lastModified = currentModified;
-          console.log('[GLOBAL]: Loaded user preferences from file');
+          logger.info("loaded user preferences from file");
         }
       } else {
         // Create default preferences if file doesn't exist
         preferencesCache = { users: {} };
         savePreferences(preferencesCache);
         lastModified = Date.now();
-        console.log('Created new user preferences file');
+        logger.info("created new user preferences file");
       }
     } catch (error) {
-      console.error('Error loading user preferences:', error.message);
+      logger.error("error loading user preferences:", error.message);
 
       // Try to create backup if file is corrupted
       if (fs.existsSync(PREFS_FILE)) {
         try {
           const backup = `${PREFS_FILE}.backup.${Date.now()}`;
           fs.copyFileSync(PREFS_FILE, backup);
-          console.log(`Created backup of corrupted preferences: ${backup}`);
+          logger.info(`Created backup of corrupted preferences: ${backup}`);
         } catch (backupError) {
-          console.error('Failed to create backup:', backupError.message);
+          logger.error("Failed to create backup:", backupError.message);
         }
       }
 
@@ -76,15 +77,15 @@ function savePreferences(preferences) {
       fs.mkdirSync(dir, { recursive: true });
     }
     const data = JSON.stringify(preferences, null, 2);
-    fs.writeFileSync(PREFS_FILE, data, 'utf8');
+    fs.writeFileSync(PREFS_FILE, data, "utf8");
 
     // Update lastModified to match the file we just wrote
     // This prevents unnecessary reloads on next check
     const stats = fs.statSync(PREFS_FILE);
     lastModified = stats.mtime.getTime();
   } catch (error) {
-    console.error('Error saving user preferences:', error.message);
-    console.error('Continuing with in-memory cache only (graceful degradation)');
+    logger.error("Error saving user preferences:", error.message);
+    logger.error("Continuing with in-memory cache only (graceful degradation)");
   }
 }
 
@@ -99,7 +100,7 @@ function getUserPreference(userId) {
     prefs.users[userId] = {
       silenced: !AMBIENT_MODE,
       customCooldown: null,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
   }
 
@@ -116,7 +117,7 @@ function updateUserPreference(userId, updates) {
     prefs.users[userId] = {
       silenced: !AMBIENT_MODE,
       customCooldown: null,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
   }
 
@@ -152,5 +153,5 @@ module.exports = {
   getUserPreference,
   updateUserPreference,
   isUserSilenced,
-  getUserCooldown
+  getUserCooldown,
 };

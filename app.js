@@ -5,11 +5,11 @@ const OpenAI = require("openai");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const util = require("util");
 const userPrefs = require("./user-preferences");
 const channelConfigModule = require("./channel-config");
 const channelPrefs = require("./channel-preferences");
 const modalDefs = require("./modal-definitions");
+const logger = require("./logger");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,62 +18,18 @@ const port = process.env.PORT || 3000;
 const MAX_COMPLETION_TOKENS =
   parseInt(process.env.MAX_COMPLETION_TOKENS) || 4000; // Higher default for reasoning models
 const RESPONSE_COOLDOWN_SECONDS =
-  parseInt(process.env.RESPONSE_COOLDOWN_SECONDS) || 300; // 5 minutes default
-const DEBUG_MODE = process.env.DEBUG_MODE === "true";
+  parseInt(process.env.RESPONSE_COOLDOWN_SECONDS) || 60; // 1 minutes default
 const MODEL = process.env.MODEL || "gpt-5-mini"; // OpenAI model to use
 const THREAD_CONTEXT_MESSAGES =
   parseInt(process.env.THREAD_CONTEXT_MESSAGES) || 10; // Thread history messages to include
-const HELP_FOOTER = "\n\n_Type `/dasilva help` for more information_";
+const EPHEMERAL_FOOTER =
+  "\n\n\n\n_Type `/dasilva help` for more information_\n\n_If this response is helpful, use the promote button so everyone can benefit._";
 const GLOBAL_ADMINS = (process.env.GLOBAL_ADMINS || "")
   .split(",")
   .map((id) => id.trim())
   .filter(Boolean);
-const LOG_CHANNEL = process.env.LOG_CHANNEL || null;
 const FEEDBACK_EMOJI = process.env.FEEDBACK_EMOJI || "feedback";
 const FEEDBACK_CHANNEL = process.env.FEEDBACK_CHANNEL || null;
-
-// Logging helpers: always log to console, optionally forward to a Slack channel
-
-function sendToLogChannel(text) {
-  const timestamp = new Date().toISOString().replace("T", " ").replace("Z", "");
-  const flat = text.replace(/\s+/g, " ");
-  slackClient.chat
-    .postMessage({ channel: LOG_CHANNEL, text: `\`${timestamp}: ${flat}\`` })
-    .catch((err) => {
-      console.error(
-        `[LOG_CHANNEL] Failed to post to ${LOG_CHANNEL}:`,
-        err.message,
-      );
-    });
-}
-
-function log(...args) {
-  console.log(...args);
-  if (LOG_CHANNEL) {
-    sendToLogChannel(util.format(...args));
-  }
-}
-
-function logError(...args) {
-  console.error(...args);
-  if (LOG_CHANNEL) {
-    sendToLogChannel(`[ERROR] ${util.format(...args)}`);
-  }
-}
-
-function logWarn(...args) {
-  console.warn(...args);
-  if (LOG_CHANNEL) {
-    sendToLogChannel(`[WARN] ${util.format(...args)}`);
-  }
-}
-
-// Helper for debug logging (console-only, not forwarded to Slack)
-function debug(...args) {
-  if (DEBUG_MODE) {
-    console.log("[DEBUG]", ...args);
-  }
-}
 
 // Helper: post a threaded reply in Slack
 function postThreadReply(channel, threadTs, text) {
@@ -118,12 +74,8 @@ const openai = new OpenAI({
 
 // Is optional PERSISTENT_STORAGE value set?
 if (process.env.PERSISTENT_STORAGE) {
-  log(`[GLOBAL]: Using persistent storage: ${process.env.PERSISTENT_STORAGE}`);
+  logger.info(`Using persistent storage: ${process.env.PERSISTENT_STORAGE}`);
 }
-
-// Is optional PERSISTENT_STORAGE value set?
-
-debug(`DEBUG_MODE=${DEBUG_MODE}`);
 
 // Helper: Check if message looks like a question that needs answering
 function looksLikeQuestion(text) {
@@ -134,10 +86,10 @@ function looksLikeQuestion(text) {
 
   // Starts with question words
   const questionStarters = [
-    "what",
-    "when",
-    "where",
     "who",
+    "what",
+    "where",
+    "when",
     "why",
     "how",
     "which",
@@ -173,8 +125,8 @@ function shouldRespondToUser(channelId, userId) {
   const key = `${channelId}:${userId}`;
   const lastTime = lastResponseTimes.get(key);
 
-  debug(
-    `[${channelId}]: cooldown check for user ${userId} (lastTime: ${lastTime})`,
+  logger.debug(
+    `[${channelId}] cooldown check for user ${userId} (lastTime: ${lastTime})`,
   );
 
   if (!lastTime) return true;
@@ -186,8 +138,8 @@ function shouldRespondToUser(channelId, userId) {
 
   const timeSinceLastResponse = (Date.now() - lastTime) / 1000;
 
-  debug(
-    `[${channelId}]: cooldown timer ${userId}: ${timeSinceLastResponse >= cooldown}`,
+  logger.debug(
+    `[${channelId}] cooldown timer ${userId}: ${timeSinceLastResponse >= cooldown}`,
   );
   return timeSinceLastResponse >= cooldown;
 }
@@ -204,7 +156,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get("/", (req, res) => {
-  res.send("dasilva is alive!");
+  res.send("ok");
 });
 
 // =========================================
@@ -214,7 +166,7 @@ app.post("/slack/commands", async (req, res) => {
   // Set a safety timeout to respond within 2.5 seconds no matter what
   const safetyTimeout = setTimeout(() => {
     if (!res.headersSent) {
-      logWarn("Slash command took too long - sending fallback response");
+      logger.warn("Slash command took too long - sending fallback response");
       res.json({
         response_type: "ephemeral",
         text: "Request is taking longer than expected. Please try again.",
@@ -265,7 +217,7 @@ app.post("/slack/commands", async (req, res) => {
 I monitor specific channels and help answer questions.
 
 *How I respond:*
-- *@mention me* - I reply *publicly* in a thread
+- *@mention me* - I reply *publicly* in a threaded response
 - *Reply in that thread* - I stay in the conversation and respond to follow-ups (no need to @mention me again)
 - *Ask a question in the channel* - I may reply *privately* to avoid channel spam and not discourage participation
 
@@ -298,15 +250,15 @@ I monitor specific channels and help answer questions.
       userPrefs.updateUserPreference(userId, { silenced: true });
       responseText =
         "DaSilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
-      log(
-        `[${channelId}]: User ${userId} enabled silence mode via slash command`,
+      logger.info(
+        `[${channelId}] User ${userId} enabled silence mode via slash command`,
       );
     } else if (args === "unsilence") {
       userPrefs.updateUserPreference(userId, { silenced: false });
       responseText =
         "You'll now receive ambient responses when you ask questions.";
-      log(
-        `[${channelId}]: User ${userId} disabled silence mode via slash command`,
+      logger.info(
+        `[${channelId}] User ${userId} disabled silence mode via slash command`,
       );
     } else if (args.startsWith("cooldown ")) {
       const minutesMatch = args.match(/^cooldown\s+(\d+)$/);
@@ -324,8 +276,8 @@ I monitor specific channels and help answer questions.
           });
           const minuteText = minutes === 1 ? "minute" : "minutes";
           responseText = `Your cooldown has been set to ${minutes} ${minuteText}.`;
-          log(
-            `[${channelId}]: User ${userId} set custom cooldown to ${minutes} minutes via slash command`,
+          logger.info(
+            `[${channelId}] User ${userId} set custom cooldown to ${minutes} minutes via slash command`,
           );
         }
       }
@@ -343,7 +295,7 @@ I monitor specific channels and help answer questions.
 
           if (result.success) {
             responseText = `Channel <#${channelId}> subscribed successfully! Use \`/dasilva addvector <vector_id>\` to connect an OpenAI vector store.`;
-            log(`[${channelId}]: channel subscribed by admin ${userId}`);
+            logger.info(`[${channelId}] channel subscribed by admin ${userId}`);
           } else {
             responseText = `Failed to add channel: ${result.error}`;
           }
@@ -366,7 +318,7 @@ I monitor specific channels and help answer questions.
 
           // Open modal asynchronously (don't await here)
           openLeaveChannelModal(trigger_id, channelId).catch((error) => {
-            logError("Error opening leave channel modal:", error);
+            logger.error("Error opening leave channel modal:", error);
           });
           return;
         }
@@ -409,8 +361,8 @@ I monitor specific channels and help answer questions.
             vector_id: vectorId,
           });
           responseText = `Vector store \`${vectorId}\` configured for <#${channelId}>.`;
-          log(
-            `[${channelId}]: vector store ${vectorId} added by admin ${userId}`,
+          logger.info(
+            `[${channelId}] vector store ${vectorId} added by admin ${userId}`,
           );
         }
       }
@@ -422,7 +374,7 @@ I monitor specific channels and help answer questions.
         const existed = channelPrefs.deleteChannelPreference(channelId);
         if (existed) {
           responseText = `Vector store removed from <#${channelId}>.`;
-          log(`[${channelId}]: vector store removed by admin ${userId}`);
+          logger.info(`[${channelId}] vector store removed by admin ${userId}`);
         } else {
           responseText = `No vector store configured for <#${channelId}>.`;
         }
@@ -461,7 +413,7 @@ I monitor specific channels and help answer questions.
       text: responseText,
     });
   } catch (error) {
-    logError("Error handling slash command:", error);
+    logger.error("Error handling slash command:", error);
     clearTimeout(safetyTimeout);
     if (!res.headersSent) {
       res.json({
@@ -529,7 +481,7 @@ app.post(
       const payload = JSON.parse(req.body.payload);
       const { type, user, view } = payload;
 
-      debug("Interaction received:", {
+      logger.debug("Interaction received:", {
         type,
         callback_id: view?.callback_id,
         user_id: user.id,
@@ -548,7 +500,7 @@ app.post(
               view: modalDefs.feedbackModal(channel, messageTs),
             });
           } catch (error) {
-            logError("Error opening feedback modal:", error);
+            logger.error("Error opening feedback modal:", error);
           }
 
           // Remove the ephemeral "Give Feedback" button message
@@ -556,7 +508,7 @@ app.post(
             axios
               .post(payload.response_url, { delete_original: true })
               .catch((error) => {
-                debug(
+                logger.debug(
                   "Failed to delete ephemeral feedback prompt:",
                   error.message,
                 );
@@ -569,20 +521,23 @@ app.post(
         if (action?.action_id === "promote_to_public") {
           const { channel, messageTs, reply } = JSON.parse(action.value);
 
-          log(
-            `[${channel}]: promoting ephemeral response (msg: ${messageTs}) requested by ${user.id}`,
+          logger.info(
+            `[${channel}] (${messageTs}) promoting ephemeral response requested by ${user.id}`,
           );
 
           try {
             // Post public reply to the original message
             await postThreadReply(channel, messageTs, reply);
 
+            // Mark this thread as active so follow-ups are handled like @mention threads
+            activeThreads.set(`${channel}:${messageTs}`, Date.now());
+
             // Delete the ephemeral message
             if (payload.response_url) {
               await axios.post(payload.response_url, { delete_original: true });
             }
           } catch (error) {
-            logError("Error promoting ephemeral to public:", error);
+            logger.error("Error promoting ephemeral to public:", error);
           }
 
           return res.status(200).send();
@@ -609,7 +564,7 @@ app.post(
       // Default response for unhandled interactions
       res.status(200).send();
     } catch (error) {
-      logError("Error handling interaction:", error);
+      logger.error("Error handling interaction:", error);
       res.status(200).json({
         response_action: "errors",
         errors: {
@@ -629,7 +584,7 @@ async function openLeaveChannelModal(triggerId, channelId) {
       view: modalDefs.leaveChannelModal(channelId),
     });
   } catch (error) {
-    logError("Error opening leave channel modal:", error);
+    logger.error("Error opening leave channel modal:", error);
     throw error;
   }
 }
@@ -654,7 +609,7 @@ async function handleLeaveChannelSubmission(view, userId) {
   const confirmationInput =
     values.confirmation_block.confirmation_input.value.trim();
 
-  log(`[${channelId}]: admin ${userId} attempting to leave channel`);
+  logger.info(`[${channelId}] admin ${userId} attempting to leave channel`);
 
   // Validate that user typed the exact channel ID
   if (confirmationInput !== channelId) {
@@ -681,7 +636,7 @@ async function handleLeaveChannelSubmission(view, userId) {
   // Remove vector store preference for this channel
   channelPrefs.deleteChannelPreference(channelId);
 
-  log(`[${channelId}]: channel left by admin ${userId}`);
+  logger.info(`[${channelId}] channel left by admin ${userId}`);
 
   // Clear the modal
   return { response_action: "clear" };
@@ -703,8 +658,8 @@ async function handleFeedbackSubmission(view, userId) {
       values.feedback_details_block?.feedback_details_input?.value ||
       "No additional details";
 
-    log(
-      `[${channel}]: feedback submitted by ${userId} - category: ${category}`,
+    logger.info(
+      `[${channel}] (${messageTs}) feedback submitted by ${userId} - category: ${category}`,
     );
 
     if (FEEDBACK_CHANNEL) {
@@ -727,7 +682,7 @@ async function handleFeedbackSubmission(view, userId) {
 
     return { response_action: "clear" };
   } catch (error) {
-    logError("Error handling feedback submission:", error);
+    logger.error("Error handling feedback submission:", error);
     return {
       response_action: "errors",
       errors: {
@@ -763,7 +718,7 @@ async function getThreadHistory(channel, threadTs, currentMessageTs) {
       }))
       .filter((msg) => msg.content.length > 0);
   } catch (error) {
-    logError("Error fetching thread history:", error);
+    logger.error("Error fetching thread history:", error);
     return [];
   }
 }
@@ -859,14 +814,14 @@ async function handleMention(event) {
   const { text, channel: channelId, ts, user: userId } = event;
   const threadTs = event.thread_ts || ts;
 
-  log(`[${channelId}]: mention request from ${userId} in thread ${threadTs}`);
+  logger.info(`[${channelId}] (${threadTs}) mention request from ${userId}`);
 
   const ctx = getChannelContext(channelId);
   if (!ctx) {
     const msg = !channelConfigModule.getChannel(channelId)
       ? "Sorry, I'm not configured for this channel yet."
       : "Sorry, I'm not trained for this channel yet.";
-    log(`[${channelId}]: ${msg}`);
+    logger.info(`[${channelId}] ${msg}`);
     await postThreadReply(channelId, threadTs, msg);
 
     return;
@@ -889,25 +844,25 @@ async function handleMention(event) {
         responseSummary.status === "incomplete" &&
         responseSummary.incomplete_reason === "max_output_tokens"
       ) {
-        log(
-          `[${channelId}]: llm ran out of response tokens for thread ${threadTs}`,
+        logger.info(
+          `[${channelId}] (${threadTs}) llm ran out of response tokens`,
         );
         reasonText =
           "I was unable to answer due to complexity. Please try to rephrase your question.";
       } else if (responseSummary.status === "completed") {
-        log(`[${channelId}]: llm untrained response for thread ${threadTs}`);
+        logger.info(`[${channelId}] (${threadTs}) llm untrained response`);
         reasonText =
           "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.";
       } else {
-        log(
-          `[${channelId}]: llm empty response with unexpected status for thread ${threadTs}`,
+        logger.info(
+          `[${channelId}] (${threadTs}) llm empty response with unexpected status`,
         );
         reasonText =
           "Sorry, I encountered an unexpected issue processing your request.";
       }
 
-      log(
-        `[${channelId}]: empty llm response for thread ${threadTs}`,
+      logger.info(
+        `[${channelId}] (${threadTs}) empty llm response`,
         JSON.stringify(responseSummary),
       );
 
@@ -920,8 +875,9 @@ async function handleMention(event) {
 
     activeThreads.set(`${channelId}:${threadTs}`, Date.now());
 
-    log(
-      `[${channelId}]: public response (${response.usage?.total_tokens || 0} tokens) for ${userId} in thread ${threadTs}`,
+    logger.info(`[${channelId}] (${event.ts}) public response to ${userId}`);
+    logger.info(
+      `[${channelId}] (${event.ts})  `,
       JSON.stringify(summarizeOpenAIResponse(response)),
     );
   } catch (error) {
@@ -932,9 +888,12 @@ async function handleMention(event) {
       typeof error?.status === "number";
 
     if (isLikelyOpenAI) {
-      logError("Error in handleMention (OpenAI):", summarizeOpenAIError(error));
+      logger.error(
+        "Error in handleMention (OpenAI):",
+        summarizeOpenAIError(error),
+      );
     } else {
-      logError("Error in handleMention:", error);
+      logger.error("Error in handleMention:", error);
     }
 
     try {
@@ -944,7 +903,7 @@ async function handleMention(event) {
         "Sorry, I encountered an error processing your request.",
       );
     } catch (slackError) {
-      logError(
+      logger.error(
         "Error sending error message to Slack:",
         summarizeSlackError(slackError),
       );
@@ -963,17 +922,17 @@ async function handleAmbient(event) {
   if (!shouldRespondToUser(channelId, userId)) return;
   if (userPrefs.isUserSilenced(userId)) return;
 
-  log(`[${channelId}]: ambient request from ${userId} (msg: ${event.ts})`);
+  logger.info(`[${channelId}] (${event.ts}) ambient request from ${userId}`);
 
   try {
     const response = await callOpenAI(text, ctx.vectorId);
-    debug("OpenAI response:", response);
+    logger.debug("OpenAI response:", response);
 
     const reply = response.output_text;
 
     if (!reply?.trim()) {
-      log(
-        `[${channelId}]: ephemeral response suppressed for ${userId} (empty reply)`,
+      logger.info(
+        `[${channelId}] (${event.ts}) ephemeral response for ${userId} suppressed (empty reply)`,
       );
       return;
     }
@@ -994,8 +953,8 @@ async function handleAmbient(event) {
       "not able to answer",
     ];
     if (declinePatterns.some((p) => reply.toLowerCase().includes(p))) {
-      log(
-        `[${channelId}]: ephemeral response suppressed for ${userId} (model declined)`,
+      logger.info(
+        `[${channelId}] (${event.ts}) ephemeral response for ${userId} suppressed (${p})`,
       );
       return;
     }
@@ -1003,13 +962,13 @@ async function handleAmbient(event) {
     await slackClient.chat.postEphemeral({
       channel: channelId,
       user: userId,
-      text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`,
+      text: `_Only visible to you:_\n\n${reply}${EPHEMERAL_FOOTER}`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `_Only visible to you:_\n\n${reply}${HELP_FOOTER}`,
+            text: `_Only visible to you:_\n\n${reply}${EPHEMERAL_FOOTER}`,
           },
         },
         {
@@ -1034,8 +993,9 @@ async function handleAmbient(event) {
     });
 
     recordResponse(channelId, userId);
-    log(
-      `[${channelId}]: ephemeral response (${response.usage?.total_tokens || 0} tokens) for ${userId}`,
+    logger.info(`[${channelId}] (${event.ts}) ephemeral response to ${userId}`);
+    logger.info(
+      `[${channelId}] (${event.ts})  `,
       JSON.stringify(summarizeOpenAIResponse(response)),
     );
   } catch (error) {
@@ -1045,13 +1005,13 @@ async function handleAmbient(event) {
       typeof error?.status === "number";
 
     if (isLikelyOpenAI) {
-      logError(
-        `[${channelId}]: error in handleAmbient (OpenAI) for ${userId}:`,
+      logger.error(
+        `[${channelId}] error in handleAmbient (OpenAI) for ${userId}:`,
         summarizeOpenAIError(error),
       );
     } else {
-      logError(
-        `[${channelId}]: error in handleAmbient (Slack) for ${userId}:`,
+      logger.error(
+        `[${channelId}] error in handleAmbient (Slack) for ${userId}:`,
         summarizeSlackError(error),
       );
     }
@@ -1068,17 +1028,17 @@ async function handleReactionAdded(event) {
       item_user: messageAuthorId,
     } = event;
 
-    debug("Reaction event:", reaction);
+    logger.debug("Reaction event:", reaction);
 
     // Only process the configured feedback emoji
     if (reaction.split(":")[0] !== FEEDBACK_EMOJI) {
-      debug(`Ignoring reaction: ${reaction} (not feedback emoji)`);
+      logger.debug(`Ignoring reaction: ${reaction} (not feedback emoji)`);
       return;
     }
 
     // Only process reactions on bot's own messages
     if (!botUserId || messageAuthorId !== botUserId) {
-      debug(
+      logger.debug(
         `Ignoring feedback reaction: message author ${messageAuthorId} is not the bot ${botUserId}`,
       );
       return;
@@ -1086,14 +1046,14 @@ async function handleReactionAdded(event) {
 
     // Don't process reactions from the bot itself
     if (reactingUserId === botUserId) {
-      debug("Ignoring feedback reaction from bot itself");
+      logger.debug("Ignoring feedback reaction from bot itself");
       return;
     }
 
     const { channel, ts: messageTs } = item;
 
-    log(
-      `[${channel}]: feedback reaction from user ${reactingUserId} on message ${messageTs}`,
+    logger.info(
+      `[${channel}] (${messageTs}) feedback reaction from user ${reactingUserId}`,
     );
 
     // Send ephemeral message with "Give Feedback" button
@@ -1122,7 +1082,7 @@ async function handleReactionAdded(event) {
       ],
     });
   } catch (error) {
-    logError("Error handling reaction_added:", error);
+    logger.error("Error handling reaction_added:", error);
   }
 }
 
@@ -1132,26 +1092,26 @@ async function startServer() {
     // Load channel preferences (vector store mappings)
     channelPrefs.loadPreferences();
     isInitialized = true;
-    log("[GLOBAL]: Initialization complete");
+    logger.info("Initialization complete");
 
     // Resolve the bot's own Slack user ID for filtering reactions
     try {
       const authResult = await slackClient.auth.test();
       botUserId = authResult.user_id;
-      log(`[GLOBAL]: Bot user ID resolved: ${botUserId}`);
+      logger.info(`bot user id resolved: ${botUserId}`);
     } catch (error) {
-      logError(
-        "[GLOBAL]: Failed to resolve bot user ID (feedback reactions will not work):",
+      logger.error(
+        "Failed to resolve bot user id (feedback reactions will not work):",
         error.message,
       );
     }
 
     app.listen(port, () => {
-      log(`[GLOBAL]: dasilva listening on port ${port}`);
-      log("[GLOBAL]: Ready to answer questions!");
+      logger.info(`dasilva listening on port ${port}`);
+      logger.info("ready to answer questions");
     });
   } catch (error) {
-    logError("Failed to initialize:", error);
+    logger.error("failed to initialize:", error);
     process.exit(1);
   }
 }

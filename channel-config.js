@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
 const CHANNELS_DIR = path.join(STORAGE_BASE, 'channels');
@@ -66,10 +67,10 @@ function subscribe(channelId) {
 
   try {
     fs.mkdirSync(channelPath, { recursive: true });
-    console.log(`Created channel directory: ${channelPath}`);
+    logger.info(`Created channel directory: ${channelPath}`);
     return { success: true };
   } catch (error) {
-    console.error('Error creating channel directory:', error.message);
+    logger.error('Error creating channel directory:', error.message);
     return {
       success: false,
       error: error.message
@@ -93,10 +94,10 @@ function leave(channelId) {
 
   try {
     fs.rmSync(channelPath, { recursive: true, force: true });
-    console.log(`Deleted channel directory: ${channelPath}`);
+    logger.info(`Deleted channel directory: ${channelPath}`);
     return { success: true };
   } catch (error) {
-    console.error('Error deleting channel directory:', error.message);
+    logger.error('Error deleting channel directory:', error.message);
     return {
       success: false,
       error: error.message

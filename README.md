@@ -149,24 +149,24 @@ OPENAI_API_KEY=sk-your-openai-key-here
 
 ## Configuration Options
 
-| Variable                    | Default                   | Description                                                     |
-| --------------------------- | ------------------------- | --------------------------------------------------------------- |
-| `PORT`                      | 3000                      | Server port                                                     |
-| `MODEL`                     | gpt-5-mini                | OpenAI model (gpt-5-mini or gpt-5-nano)                         |
-| `MAX_COMPLETION_TOKENS`     | 4000                      | Max tokens for response (reasoning models need 4000+)           |
-| `RESPONSE_COOLDOWN_SECONDS` | 300                       | Cooldown between ambient responses to same user (5 min)         |
-| `AMBIENT_MIN_SCORE`         | 0.3                       | Minimum chunk similarity score for ambient responses (0.0-1.0)  |
-| `CHUNK_SIZE`                | 2000                      | Characters per documentation chunk                              |
-| `MAX_CHUNKS`                | 5                         | Number of chunks to include in context                          |
-| `THREAD_CONTEXT_MESSAGES`   | 10                        | Number of prior thread messages to include for context          |
-| `DEBUG_MODE`                | false                     | Enable verbose logging including token counts                   |
-| `AMBIENT_MODE`              | false                     | when false, users must opt in via unsilence                     |
-| `GLOBAL_ADMINS`               |                           | comma delimited Slack IDs (GLOBAL_ADMINS=U01234ABCDE,U56789FGHIJ) |
-| `PERSISTENT_STORAGE`        |                           | optional path to persistent storage                             |
-| `LOG_CHANNEL`               |                           | Slack channel ID to receive copies of log messages              |
-| `OPENAI_API_KEY`            | your-openai-key           | replace with your OpenAI API Key                                |
-| `SLACK_BOT_TOKEN`           | your-slack-bot-token      | replace with your Slack Bot Token                               |
-| `SLACK_SIGNING_SECRET`      | your-slack-signing-secret | Replace with your Slack Signing Secret                          |
+| Variable                    | Default                   | Description                                                       |
+| --------------------------- | ------------------------- | ----------------------------------------------------------------- |
+| `PORT`                      | 3000                      | Server port                                                       |
+| `MODEL`                     | gpt-5-mini                | OpenAI model (gpt-5-mini or gpt-5-nano)                           |
+| `MAX_COMPLETION_TOKENS`     | 4000                      | Max tokens for response (reasoning models need 4000+)             |
+| `RESPONSE_COOLDOWN_SECONDS` | 60                        | Cooldown between ambient responses to same user (1 min)           |
+| `AMBIENT_MIN_SCORE`         | 0.3                       | Minimum chunk similarity score for ambient responses (0.0-1.0)    |
+| `CHUNK_SIZE`                | 2000                      | Characters per documentation chunk                                |
+| `MAX_CHUNKS`                | 5                         | Number of chunks to include in context                            |
+| `THREAD_CONTEXT_MESSAGES`   | 10                        | Number of prior thread messages to include for context            |
+| `DEBUG_MODE`                | false                     | Enable verbose logging including token counts                     |
+| `AMBIENT_MODE`              | false                     | when false, users must opt in via unsilence                       |
+| `GLOBAL_ADMINS`             |                           | comma delimited Slack IDs (GLOBAL_ADMINS=U01234ABCDE,U56789FGHIJ) |
+| `PERSISTENT_STORAGE`        |                           | optional path to persistent storage                               |
+| `LOG_CHANNEL`               |                           | Slack channel ID to receive copies of log messages                |
+| `OPENAI_API_KEY`            | your-openai-key           | replace with your OpenAI API Key                                  |
+| `SLACK_BOT_TOKEN`           | your-slack-bot-token      | replace with your Slack Bot Token                                 |
+| `SLACK_SIGNING_SECRET`      | your-slack-signing-secret | Replace with your Slack Signing Secret                            |
 
 ### Setting Up Admin Users
 

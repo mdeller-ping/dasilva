@@ -1,50 +1,38 @@
-const fs = require('fs');
-const path = require('path');
 const logger = require('./logger');
-
-const STORAGE_BASE = process.env.PERSISTENT_STORAGE || __dirname;
-const CHANNELS_DIR = path.join(STORAGE_BASE, 'channels');
+const channelPrefs = require('./channel-preferences');
 
 /**
- * Check if a channel exists (has a directory)
+ * Check if a channel exists (is subscribed)
  */
 function channelExists(channelId) {
-  const channelPath = path.join(CHANNELS_DIR, channelId);
-  return fs.existsSync(channelPath) && fs.statSync(channelPath).isDirectory();
+  return channelPrefs.isChannelSubscribed(channelId);
 }
 
 /**
  * Get configuration for a specific channel
- * Returns object with channelId and channelPath, or null if not found
+ * Returns object with channelId, or null if not subscribed
  */
 function getChannel(channelId) {
   if (!channelExists(channelId)) {
     return null;
   }
   return {
-    channelId: channelId,
-    channelPath: path.join(CHANNELS_DIR, channelId)
+    channelId: channelId
   };
 }
 
 /**
- * Get all channels as array of [channelId, config] tuples
+ * Get all subscribed channels as array of [channelId, config] tuples
  */
 function getAllChannels() {
-  if (!fs.existsSync(CHANNELS_DIR)) {
-    return [];
-  }
-
-  return fs.readdirSync(CHANNELS_DIR)
-    .filter(entry => {
-      const entryPath = path.join(CHANNELS_DIR, entry);
-      return fs.statSync(entryPath).isDirectory() && entry.startsWith('C');
-    })
-    .map(channelId => [channelId, getChannel(channelId)]);
+  const allPrefs = channelPrefs.getAllChannelPreferences();
+  return Object.entries(allPrefs)
+    .filter(([, pref]) => pref.subscribed === true)
+    .map(([channelId]) => [channelId, getChannel(channelId)]);
 }
 
 /**
- * Subscribe to a channel (create directory)
+ * Subscribe to a channel (add to preferences)
  * Returns { success: boolean, error?: string }
  */
 function subscribe(channelId) {
@@ -63,14 +51,12 @@ function subscribe(channelId) {
     };
   }
 
-  const channelPath = path.join(CHANNELS_DIR, channelId);
-
   try {
-    fs.mkdirSync(channelPath, { recursive: true });
-    logger.info(`Created channel directory: ${channelPath}`);
+    channelPrefs.updateChannelPreference(channelId, { subscribed: true });
+    logger.info(`Subscribed to channel: ${channelId}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error creating channel directory:', error.message);
+    logger.error('Error subscribing to channel:', error.message);
     return {
       success: false,
       error: error.message
@@ -79,7 +65,7 @@ function subscribe(channelId) {
 }
 
 /**
- * Leave a channel (delete directory and contents)
+ * Leave a channel (remove from preferences)
  * Returns { success: boolean, error?: string }
  */
 function leave(channelId) {
@@ -90,14 +76,12 @@ function leave(channelId) {
     };
   }
 
-  const channelPath = path.join(CHANNELS_DIR, channelId);
-
   try {
-    fs.rmSync(channelPath, { recursive: true, force: true });
-    logger.info(`Deleted channel directory: ${channelPath}`);
+    channelPrefs.deleteChannelPreference(channelId);
+    logger.info(`Unsubscribed from channel: ${channelId}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error deleting channel directory:', error.message);
+    logger.error('Error unsubscribing from channel:', error.message);
     return {
       success: false,
       error: error.message
@@ -110,6 +94,5 @@ module.exports = {
   getAllChannels,
   channelExists,
   subscribe,
-  leave,
-  CHANNELS_DIR
+  leave
 };

@@ -10,6 +10,7 @@ const channelConfigModule = require("./channel-config");
 const channelPrefs = require("./channel-preferences");
 const modalDefs = require("./modal-definitions");
 const logger = require("./logger");
+const { verifySlackRequest } = require("./slack-signature");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -150,9 +151,22 @@ function recordResponse(channelId, userId) {
   lastResponseTimes.set(key, Date.now());
 }
 
-// Middleware to parse JSON and URL-encoded data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware to capture raw body for Slack signature verification
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
+);
+app.use(
+  express.urlencoded({
+    extended: true,
+    verify: (req, res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
+);
 
 // Health check
 app.get("/", (req, res) => {
@@ -162,7 +176,7 @@ app.get("/", (req, res) => {
 // =========================================
 // Slack slash command endpoint
 
-app.post("/slack/commands", async (req, res) => {
+app.post("/slack/commands", verifySlackRequest, async (req, res) => {
   // Set a safety timeout to respond within 2.5 seconds no matter what
   const safetyTimeout = setTimeout(() => {
     if (!res.headersSent) {
@@ -426,7 +440,7 @@ I monitor specific channels and help answer questions.
 
 // =========================================
 // Slack event endpoint
-app.post("/slack/events", async (req, res) => {
+app.post("/slack/events", verifySlackRequest, async (req, res) => {
   const { type, challenge, event } = req.body;
 
   if (type === "url_verification") {
@@ -473,10 +487,7 @@ app.post("/slack/events", async (req, res) => {
 // =========================================
 // Slack interactions endpoint (for modals)
 
-app.post(
-  "/slack/interactions",
-  express.urlencoded({ extended: true }),
-  async (req, res) => {
+app.post("/slack/interactions", verifySlackRequest, async (req, res) => {
     try {
       const payload = JSON.parse(req.body.payload);
       const { type, user, view } = payload;
@@ -827,6 +838,25 @@ async function handleMention(event) {
     return;
   }
 
+  // Post initial "thinking" message
+  let thinkingMessage;
+  try {
+    thinkingMessage = await postThreadReply(
+      channelId,
+      threadTs,
+      "_Thinking..._",
+    );
+  } catch (error) {
+    logger.error("Error posting thinking message:", error);
+    // Fallback to original behavior if we can't post the thinking message
+    await postThreadReply(
+      channelId,
+      threadTs,
+      "Sorry, I encountered an error processing your request.",
+    );
+    return;
+  }
+
   const userMessage = text.replace(/<@[A-Z0-9]+>/g, "").trim();
   const threadHistory = event.thread_ts
     ? await getThreadHistory(channelId, event.thread_ts, ts)
@@ -866,12 +896,22 @@ async function handleMention(event) {
         JSON.stringify(responseSummary),
       );
 
-      await postThreadReply(channelId, threadTs, reasonText);
+      // Update the thinking message with the error
+      await slackClient.chat.update({
+        channel: channelId,
+        ts: thinkingMessage.ts,
+        text: reasonText,
+      });
 
       return;
     }
 
-    await postThreadReply(channelId, threadTs, reply);
+    // Update the thinking message with the actual response
+    await slackClient.chat.update({
+      channel: channelId,
+      ts: thinkingMessage.ts,
+      text: reply,
+    });
 
     activeThreads.set(`${channelId}:${threadTs}`, Date.now());
 
@@ -896,15 +936,16 @@ async function handleMention(event) {
       logger.error("Error in handleMention:", error);
     }
 
+    // Update the thinking message with the error
     try {
-      await postThreadReply(
-        channelId,
-        threadTs,
-        "Sorry, I encountered an error processing your request.",
-      );
+      await slackClient.chat.update({
+        channel: channelId,
+        ts: thinkingMessage.ts,
+        text: "Sorry, I encountered an error processing your request.",
+      });
     } catch (slackError) {
       logger.error(
-        "Error sending error message to Slack:",
+        "Error updating message with error:",
         summarizeSlackError(slackError),
       );
     }

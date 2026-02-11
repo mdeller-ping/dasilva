@@ -90,11 +90,19 @@ function savePreferences(preferences) {
 
 /**
  * Get channel preference object
- * Returns null if channel has no entry (no vector store configured)
+ * Returns null if channel has no entry
  */
 function getChannelPreference(channelId) {
   const prefs = loadPreferences();
   return prefs.channels[channelId] || null;
+}
+
+/**
+ * Check if channel is subscribed
+ */
+function isChannelSubscribed(channelId) {
+  const pref = getChannelPreference(channelId);
+  return pref?.subscribed === true;
 }
 
 /**
@@ -151,4 +159,5 @@ module.exports = {
   deleteChannelPreference,
   getAllChannelPreferences,
   getVectorId,
+  isChannelSubscribed,
 };

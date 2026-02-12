@@ -28,7 +28,7 @@ const {
   handleLeaveChannelSubmission,
   handleFeedbackSubmission,
 } = require("./utils-modals");
-const { isUserSilenced } = require("./utils-preferences");
+const { isUserSilencedInChannel } = require("./utils-preferences");
 const { shouldRespondToUser } = require("./utils-ratelimit");
 
 const app = express();
@@ -226,10 +226,10 @@ app.post("/slack/events", verifySlackRequest, async (req, res) => {
       return;
     }
 
-    // has user silenced the bot from answering ambient questions?
-    if (isUserSilenced(event.user)) {
+    // has user silenced the bot from answering ambient questions in this channel?
+    if (isUserSilencedInChannel(event.user, event.channel)) {
       logger.info(
-        `[${event.channel}] (${event.ts}) ambient message from ${event.user} who is on silence. Ignoring.`,
+        `[${event.channel}] (${event.ts}) ambient message from ${event.user} who is silenced in this channel. Ignoring.`,
       );
       return;
     }

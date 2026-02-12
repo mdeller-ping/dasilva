@@ -122,6 +122,7 @@ const DEFAULT_USER_PREF = {
   silenced: !AMBIENT_MODE,
   customCooldown: null,
   channelResponseTimes: {}, // Track last response time per channel
+  channelSilences: {}, // Track which channels user is silenced in: { "channelId": true }
   lastUpdated: new Date().toISOString(),
 };
 
@@ -258,6 +259,56 @@ function isChannelSubscribed(channelId) {
 }
 
 /**
+ * Check if a user is silenced in a specific channel
+ * Returns true if user has disabled ambient responses for this channel
+ */
+function isUserSilencedInChannel(userId, channelId) {
+  const userPref = getUserPreference(userId);
+  return userPref.channelSilences?.[channelId] === true;
+}
+
+/**
+ * Silence a user in a specific channel
+ * User will not receive ambient responses in this channel
+ */
+function silenceUserInChannel(userId, channelId) {
+  const prefs = loadUserPreferences();
+
+  if (!prefs.users[userId]) {
+    prefs.users[userId] = {
+      ...DEFAULT_USER_PREF,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  if (!prefs.users[userId].channelSilences) {
+    prefs.users[userId].channelSilences = {};
+  }
+
+  prefs.users[userId].channelSilences[channelId] = true;
+  prefs.users[userId].lastUpdated = new Date().toISOString();
+
+  userManager.save(prefs);
+}
+
+/**
+ * Unsilence a user in a specific channel
+ * User will receive ambient responses in this channel again
+ */
+function unsilenceUserInChannel(userId, channelId) {
+  const prefs = loadUserPreferences();
+
+  if (!prefs.users[userId]?.channelSilences) {
+    return; // Nothing to do
+  }
+
+  delete prefs.users[userId].channelSilences[channelId];
+  prefs.users[userId].lastUpdated = new Date().toISOString();
+
+  userManager.save(prefs);
+}
+
+/**
  * Update channel preference (upsert)
  */
 function updateChannelPreference(channelId, updates) {
@@ -329,4 +380,7 @@ module.exports = {
   getAllChannelPreferences,
   getVectorId,
   isChannelSubscribed,
+  isUserSilencedInChannel,
+  silenceUserInChannel,
+  unsilenceUserInChannel,
 };

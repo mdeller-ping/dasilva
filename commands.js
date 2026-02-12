@@ -5,6 +5,9 @@ const {
   getAllChannelPreferences,
   updateChannelPreference,
   deleteChannelPreference,
+  isUserSilencedInChannel,
+  silenceUserInChannel,
+  unsilenceUserInChannel,
 } = require("./utils-preferences");
 const channelConfigModule = require("./utils-channel");
 const logger = require("./utils-logger");
@@ -23,7 +26,9 @@ function adminOnly(fn) {
 
 function handleHelp(ctx) {
   const userPref = getUserPreference(ctx.userId);
-  const silencedStatus = userPref.silenced ? "Yes" : "No";
+  const silencedStatus = isUserSilencedInChannel(ctx.userId, ctx.channelId)
+    ? "Yes (in this channel)"
+    : "No";
   const cooldownStatus =
     userPref.customCooldown !== null
       ? `${userPref.customCooldown / 60} minutes`
@@ -43,8 +48,8 @@ I monitor specific channels and help answer questions.
 
 *Slash Commands:*
 - \`/dasilva help\` - Show this message
-- \`/dasilva silence\` - Pause private (ambient) responses
-- \`/dasilva unsilence\` - Allow private (ambient) responses
+- \`/dasilva silence\` - Pause private (ambient) responses in this channel
+- \`/dasilva unsilence\` - Allow private (ambient) responses in this channel
 - \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
 
 *Your current settings:*
@@ -67,19 +72,19 @@ I monitor specific channels and help answer questions.
 }
 
 function handleSilence(ctx) {
-  updateUserPreference(ctx.userId, { silenced: true });
+  silenceUserInChannel(ctx.userId, ctx.channelId);
   logger.info(
     `[${ctx.channelId}]: User ${ctx.userId} enabled silence mode via slash command`,
   );
-  return "DaSilva has been silenced. You won't receive ambient responses. Use `/dasilva unsilence` to resume. (@mentions still work!)";
+  return "DaSilva has been silenced in this channel. You won't receive ambient responses here. Use `/dasilva unsilence` to resume. (@mentions still work!)";
 }
 
 function handleUnsilence(ctx) {
-  updateUserPreference(ctx.userId, { silenced: false });
+  unsilenceUserInChannel(ctx.userId, ctx.channelId);
   logger.info(
     `[${ctx.channelId}]: User ${ctx.userId} disabled silence mode via slash command`,
   );
-  return "You'll now receive ambient responses when you ask questions.";
+  return "You'll now receive ambient responses when you ask questions in this channel.";
 }
 
 function handleCooldown(ctx) {

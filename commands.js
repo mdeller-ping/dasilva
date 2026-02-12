@@ -1,10 +1,18 @@
-const userPrefs = require("./user-preferences");
-const channelConfigModule = require("./channel-config");
-const channelPrefs = require("./channel-preferences");
-const logger = require("./logger");
-
-const RESPONSE_COOLDOWN_SECONDS =
-  parseInt(process.env.RESPONSE_COOLDOWN_SECONDS) || 60;
+const {
+  getUserPreference,
+  updateUserPreference,
+  getVectorId,
+  getAllChannelPreferences,
+  updateChannelPreference,
+  deleteChannelPreference,
+} = require("./utils-preferences");
+const channelConfigModule = require("./utils-channel");
+const logger = require("./utils-logger");
+const {
+  RESPONSE_COOLDOWN_SECONDS,
+  UNKNOWN_COMMAND_MESSAGE,
+} = require("./utils-variables");
+const { isValidVectorId } = require("./utils-openai");
 
 function adminOnly(fn) {
   return (ctx) => {
@@ -14,7 +22,7 @@ function adminOnly(fn) {
 }
 
 function handleHelp(ctx) {
-  const userPref = userPrefs.getUserPreference(ctx.userId);
+  const userPref = getUserPreference(ctx.userId);
   const silencedStatus = userPref.silenced ? "Yes" : "No";
   const cooldownStatus =
     userPref.customCooldown !== null
@@ -59,7 +67,7 @@ I monitor specific channels and help answer questions.
 }
 
 function handleSilence(ctx) {
-  userPrefs.updateUserPreference(ctx.userId, { silenced: true });
+  updateUserPreference(ctx.userId, { silenced: true });
   logger.info(
     `[${ctx.channelId}]: User ${ctx.userId} enabled silence mode via slash command`,
   );
@@ -67,7 +75,7 @@ function handleSilence(ctx) {
 }
 
 function handleUnsilence(ctx) {
-  userPrefs.updateUserPreference(ctx.userId, { silenced: false });
+  updateUserPreference(ctx.userId, { silenced: false });
   logger.info(
     `[${ctx.channelId}]: User ${ctx.userId} disabled silence mode via slash command`,
   );
@@ -84,7 +92,7 @@ function handleCooldown(ctx) {
     return `Cooldown must be between 0 and 1440 minutes (24 hours). You provided: ${minutes} minutes.`;
   }
   const cooldownSeconds = minutes * 60;
-  userPrefs.updateUserPreference(ctx.userId, {
+  updateUserPreference(ctx.userId, {
     customCooldown: cooldownSeconds,
   });
   const minuteText = minutes === 1 ? "minute" : "minutes";
@@ -124,7 +132,7 @@ function handleChannels() {
     "*Configured Channels:*\n\n" +
     channels
       .map(([id]) => {
-        const vectorId = channelPrefs.getVectorId(id);
+        const vectorId = getVectorId(id);
         const vectorInfo = vectorId
           ? `Vector: \`${vectorId}\``
           : "_No vector store_";
@@ -136,10 +144,10 @@ function handleChannels() {
 
 function handleAddVector(ctx) {
   const vectorId = ctx.originalText.trim().split(/\s+/)[1];
-  if (!vectorId || !vectorId.startsWith("vs_")) {
+  if (!isValidVectorId(vectorId)) {
     return "Invalid vector store ID. Usage: `/dasilva addvector vs_xxxxx`";
   }
-  channelPrefs.updateChannelPreference(ctx.channelId, {
+  updateChannelPreference(ctx.channelId, {
     vector_id: vectorId,
   });
   logger.info(
@@ -149,7 +157,7 @@ function handleAddVector(ctx) {
 }
 
 function handleDropVector(ctx) {
-  const existed = channelPrefs.deleteChannelPreference(ctx.channelId);
+  const existed = deleteChannelPreference(ctx.channelId);
   if (existed) {
     logger.info(
       `[${ctx.channelId}]: vector store removed by admin ${ctx.userId}`,
@@ -160,7 +168,7 @@ function handleDropVector(ctx) {
 }
 
 function handleListVector() {
-  const allPrefs = channelPrefs.getAllChannelPreferences();
+  const allPrefs = getAllChannelPreferences();
   const entries = Object.entries(allPrefs).filter(([, pref]) => pref.vector_id);
   if (entries.length === 0) {
     return "No vector stores configured for any channel.";
@@ -192,7 +200,7 @@ function dispatch(ctx) {
   const [cmd] = ctx.args.split(/\s+/);
   const handler = commands[cmd];
   if (handler) return handler(ctx);
-  return `Unknown command: \`${ctx.originalText}\`\n\nType \`/dasilva help\` to see available commands.`;
+  return UNKNOWN_COMMAND_MESSAGE.replace("{command}", ctx.originalText);
 }
 
 module.exports = { dispatch };

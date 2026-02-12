@@ -1,11 +1,16 @@
-const logger = require('./logger');
-const channelPrefs = require('./channel-preferences');
+const logger = require("./utils-logger");
+const {
+  isChannelSubscribed,
+  getAllChannelPreferences,
+  updateChannelPreference,
+  deleteChannelPreference,
+} = require("./utils-preferences");
 
 /**
  * Check if a channel exists (is subscribed)
  */
 function channelExists(channelId) {
-  return channelPrefs.isChannelSubscribed(channelId);
+  return isChannelSubscribed(channelId);
 }
 
 /**
@@ -17,7 +22,7 @@ function getChannel(channelId) {
     return null;
   }
   return {
-    channelId: channelId
+    channelId: channelId,
   };
 }
 
@@ -25,7 +30,7 @@ function getChannel(channelId) {
  * Get all subscribed channels as array of [channelId, config] tuples
  */
 function getAllChannels() {
-  const allPrefs = channelPrefs.getAllChannelPreferences();
+  const allPrefs = getAllChannelPreferences();
   return Object.entries(allPrefs)
     .filter(([, pref]) => pref.subscribed === true)
     .map(([channelId]) => [channelId, getChannel(channelId)]);
@@ -40,26 +45,26 @@ function subscribe(channelId) {
   if (!/^C[A-Z0-9]{10}$/.test(channelId)) {
     return {
       success: false,
-      error: 'Invalid Slack channel ID format'
+      error: "Invalid Slack channel ID format",
     };
   }
 
   if (channelExists(channelId)) {
     return {
       success: false,
-      error: `Channel ${channelId} already exists`
+      error: `Channel ${channelId} already exists`,
     };
   }
 
   try {
-    channelPrefs.updateChannelPreference(channelId, { subscribed: true });
+    updateChannelPreference(channelId, { subscribed: true });
     logger.info(`Subscribed to channel: ${channelId}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error subscribing to channel:', error.message);
+    logger.error("Error subscribing to channel:", error.message);
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -72,19 +77,19 @@ function leave(channelId) {
   if (!channelExists(channelId)) {
     return {
       success: false,
-      error: `Channel ${channelId} not found`
+      error: `Channel ${channelId} not found`,
     };
   }
 
   try {
-    channelPrefs.deleteChannelPreference(channelId);
+    deleteChannelPreference(channelId);
     logger.info(`Unsubscribed from channel: ${channelId}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error unsubscribing from channel:', error.message);
+    logger.error("Error unsubscribing from channel:", error.message);
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -94,5 +99,5 @@ module.exports = {
   getAllChannels,
   channelExists,
   subscribe,
-  leave
+  leave,
 };

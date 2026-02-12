@@ -41,7 +41,7 @@ I monitor specific channels and help answer questions.
 *How I respond:*
 - *@mention me* - I reply *publicly* in a thread
 - *Reply in that thread* - I stay in the conversation and respond to follow-ups (no need to @mention me again)
-- *Ask a question in the channel* - I may reply *privately* to avoid channel spam and not discourage participation
+- *Ask a question in the channel* - If I can help, I will reply *privately* to avoid channel spam and not discourage participation. If my response was helpful, you can promote it to a public thread so others can benefit or participate in the discussion.
 
 *What do I know:*
 - I'm trained on internal and external documentation relevant to this channel's topics
@@ -50,7 +50,7 @@ I monitor specific channels and help answer questions.
 - \`/dasilva help\` - Show this message
 - \`/dasilva silence\` - Pause private (ambient) responses in this channel
 - \`/dasilva unsilence\` - Allow private (ambient) responses in this channel
-- \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes)
+- \`/dasilva cooldown <minutes>\` - Set cooldown (0-1440 minutes) for all channels
 
 *Your current settings:*
 - Silenced: ${silencedStatus}

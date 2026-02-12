@@ -1,23 +1,22 @@
 const logger = require("./utils-logger");
-const { getUserCooldown } = require("./utils-preferences");
+const {
+  getUserCooldown,
+  getLastResponseTime,
+  recordLastResponseTime,
+} = require("./utils-preferences");
 const { RESPONSE_COOLDOWN_SECONDS } = require("./utils-variables");
 
 // ============================================================================
 // RATE LIMITING
 // ============================================================================
 
-// Track last response time per user per channel
-const lastResponseTimes = new Map(); // key: "channelId:userId", value: timestamp
-
 /**
  * Check if we should respond based on rate limiting
  * Considers user's custom cooldown if set, otherwise uses default
+ * Reads last response time from disk-backed user preferences
  */
 function shouldRespondToUser(channelId, userId) {
-  // TODO this is stored in memory and does not persist on restarts
-
-  const key = `${channelId}:${userId}`;
-  const lastTime = lastResponseTimes.get(key);
+  const lastTime = getLastResponseTime(userId, channelId);
 
   logger.debug(
     `[${channelId}] cooldown check for user ${userId} (lastTime: ${lastTime})`,
@@ -40,11 +39,10 @@ function shouldRespondToUser(channelId, userId) {
 
 /**
  * Record that we responded to a user
- * Updates the timestamp for rate limiting checks
+ * Persists the timestamp to disk via user preferences
  */
 function recordResponse(channelId, userId) {
-  const key = `${channelId}:${userId}`;
-  lastResponseTimes.set(key, Date.now());
+  recordLastResponseTime(userId, channelId, Date.now());
 }
 
 module.exports = {

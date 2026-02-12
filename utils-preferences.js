@@ -121,6 +121,7 @@ const userManager = new PreferenceManager(
 const DEFAULT_USER_PREF = {
   silenced: !AMBIENT_MODE,
   customCooldown: null,
+  channelResponseTimes: {}, // Track last response time per channel
   lastUpdated: new Date().toISOString(),
 };
 
@@ -186,6 +187,39 @@ function isUserSilenced(userId) {
 function getUserCooldown(userId) {
   const userPref = getUserPreference(userId);
   return userPref.customCooldown;
+}
+
+/**
+ * Get the last response time for a user in a specific channel
+ * Returns null if no previous response
+ */
+function getLastResponseTime(userId, channelId) {
+  const userPref = getUserPreference(userId);
+  return userPref.channelResponseTimes?.[channelId] || null;
+}
+
+/**
+ * Record that we responded to a user in a specific channel
+ * Persists the timestamp to disk
+ */
+function recordLastResponseTime(userId, channelId, timestamp = Date.now()) {
+  const prefs = loadUserPreferences();
+
+  if (!prefs.users[userId]) {
+    prefs.users[userId] = {
+      ...DEFAULT_USER_PREF,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  if (!prefs.users[userId].channelResponseTimes) {
+    prefs.users[userId].channelResponseTimes = {};
+  }
+
+  prefs.users[userId].channelResponseTimes[channelId] = timestamp;
+  prefs.users[userId].lastUpdated = new Date().toISOString();
+
+  userManager.save(prefs);
 }
 
 // ============================================================================
@@ -284,6 +318,8 @@ module.exports = {
   updateUserPreference,
   isUserSilenced,
   getUserCooldown,
+  getLastResponseTime,
+  recordLastResponseTime,
 
   // Channel preferences
   loadChannelPreferences,

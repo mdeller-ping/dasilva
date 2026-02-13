@@ -15,7 +15,7 @@ const { RESPONSE_COOLDOWN_SECONDS } = require("./utils-variables");
  * Considers user's custom cooldown if set, otherwise uses default
  * Reads last response time from disk-backed user preferences
  */
-function shouldRespondToUser(channelId, userId) {
+function isUserOnCooldown(channelId, userId) {
   const lastTime = getLastResponseTime(userId, channelId);
 
   logger.debug(
@@ -46,6 +46,6 @@ function recordResponse(channelId, userId) {
 }
 
 module.exports = {
-  shouldRespondToUser,
+  isUserOnCooldown,
   recordResponse,
 };

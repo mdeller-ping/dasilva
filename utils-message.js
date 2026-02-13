@@ -261,7 +261,7 @@ async function handleMention(event) {
     // Update the thinking message with the actual response
     await updateMessage(channelId, thinkingMessage.ts, reply);
 
-    markThreadActive(channelId, threadTs);
+    await markThreadActive(channelId, threadTs);
 
     logger.info(`[${channelId}] (${event.ts}) public response to ${userId}`);
     logger.info(

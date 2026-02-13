@@ -54,6 +54,15 @@ const FEEDBACK_CHANNEL = process.env.FEEDBACK_CHANNEL || null;
 const PORT = parseInt(process.env.PORT) || 3000;
 
 // ============================================================================
+// Redis Configuration
+// ============================================================================
+
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const REDIS_KEY_PREFIX = process.env.REDIS_KEY_PREFIX || "dasilva:";
+const ACTIVE_THREAD_TTL_SECONDS =
+  parseInt(process.env.ACTIVE_THREAD_TTL_SECONDS) || 7200; // 2 hours default
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -81,4 +90,9 @@ module.exports = {
 
   // Server
   PORT,
+
+  // Redis
+  REDIS_URL,
+  REDIS_KEY_PREFIX,
+  ACTIVE_THREAD_TTL_SECONDS,
 };

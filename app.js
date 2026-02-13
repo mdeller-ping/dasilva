@@ -29,7 +29,35 @@ const {
   handleFeedbackSubmission,
 } = require("./utils-modals");
 const { isUserSilencedInChannel } = require("./utils-preferences");
-const { shouldRespondToUser } = require("./utils-ratelimit");
+const { isUserOnCooldown } = require("./utils-ratelimit");
+const {
+  initializeRedis,
+  closeRedis,
+  isRedisConnected,
+} = require("./utils-redis");
+
+// ============================================================================
+// REDIS INITIALIZATION
+// ============================================================================
+
+// Initialize Redis connection
+(async () => {
+  try {
+    await initializeRedis();
+  } catch (error) {
+    logger.error(
+      "Failed to initialize Redis. Thread tracking will be unavailable.",
+    );
+    // Don't exit - allow bot to run without Redis for basic functionality
+  }
+})();
+
+// Graceful shutdown handler
+process.on("SIGTERM", async () => {
+  logger.info("SIGTERM received, shutting down gracefully...");
+  await closeRedis();
+  process.exit(0);
+});
 
 const app = express();
 const port = PORT;
@@ -66,7 +94,12 @@ app.use(
 
 // Health check
 app.get("/", (req, res) => {
-  res.send("ok");
+  const redisStatus = isRedisConnected() ? "connected" : "disconnected";
+  res.json({
+    status: "ok",
+    redis: redisStatus,
+    uptime: process.uptime(),
+  });
 });
 
 // =========================================
@@ -183,7 +216,10 @@ app.post("/slack/events", verifySlackRequest, async (req, res) => {
     }
 
     // active thread respond to messages that look like questions
-    if (event.thread_ts && isThreadActive(event.channel, event.thread_ts)) {
+    if (
+      event.thread_ts &&
+      (await isThreadActive(event.channel, event.thread_ts))
+    ) {
       // does this look like a question?
       if (!looksLikeQuestion(event.text)) {
         logger.info(
@@ -207,19 +243,8 @@ app.post("/slack/events", verifySlackRequest, async (req, res) => {
       return;
     }
 
-    if (!looksLikeChatter(event.text)) {
-      // does this look like chatter?
-      // yes it is chatter
-      // build this out
-      console.log("chatter");
-    } else {
-      // no it is not chatter
-      // build this out
-      console.log("not chatter");
-    }
-
     // is the user on cooldown?
-    if (!shouldRespondToUser(event.channel, event.user)) {
+    if (!isUserOnCooldown(event.channel, event.user)) {
       logger.info(
         `[${event.channel}] (${event.ts}) ambient message from ${event.user} who is on cooldown. Ignoring.`,
       );
@@ -296,7 +321,7 @@ app.post("/slack/interactions", verifySlackRequest, async (req, res) => {
           await postThreadReply(channel, messageTs, reply);
 
           // Mark this thread as active so follow-ups are handled like @mention threads
-          markThreadActive(channel, messageTs);
+          await markThreadActive(channel, messageTs);
 
           // Delete the ephemeral message
           if (payload.response_url) {

@@ -288,6 +288,101 @@ ngrok http 3000
 
 Update Slack Event Subscriptions with ngrok URL.
 
+## Docker Deployment
+
+### Using Docker Compose (Recommended)
+
+The easiest way to run DaSilva with Redis is using Docker Compose:
+
+```bash
+# Build and start both the bot and Redis
+docker-compose up -d
+
+# View logs
+docker-compose logs -f dasilva
+
+# Stop services
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
+```
+
+**Environment variables**: Docker Compose automatically loads your `.env` file. Make sure to create one based on `env.example`.
+
+### Using Docker Only
+
+If you prefer to run just the container:
+
+```bash
+# Build the image
+docker build -t dasilva .
+
+# Run the container
+docker run -d \
+  --name dasilva-bot \
+  -p 3000:3000 \
+  --env-file .env \
+  dasilva
+
+# View logs
+docker logs -f dasilva-bot
+
+# Stop container
+docker stop dasilva-bot
+```
+
+**Note**: If using Docker without Compose, you'll need to set up Redis separately and configure `REDIS_URL` in your `.env` file.
+
+### Production Deployment
+
+For production deployments:
+
+1. **Set appropriate environment variables** in your `.env` file
+2. **Configure Redis persistence** (already enabled in docker-compose.yml)
+3. **Set up reverse proxy** (nginx, Traefik) for HTTPS
+4. **Use a process manager** or orchestrator (Docker Swarm, Kubernetes)
+5. **Monitor logs** via `docker-compose logs` or centralized logging
+
+Example nginx reverse proxy configuration:
+
+```nginx
+server {
+    listen 80;
+    server_name your-bot-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Health Checks
+
+The Docker container includes health checks that verify the bot is responding:
+
+```bash
+# Check container health
+docker ps
+
+# Manual health check
+curl http://localhost:3000/
+```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "redis": "connected",
+  "uptime": 123.456
+}
+```
+
 ## Troubleshooting
 
 ### Bot doesn't respond

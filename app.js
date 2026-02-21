@@ -99,6 +99,7 @@ app.get("/", (req, res) => {
     status: "ok",
     redis: redisStatus,
     uptime: process.uptime(),
+    chatter: looksLikeChatter("impossible travel predictor"),
   });
 });
 
@@ -215,19 +216,23 @@ app.post("/slack/events", verifySlackRequest, async (req, res) => {
       return handleMention(event);
     }
 
-    // active thread respond to messages that look like questions
+    // receive message in active thread
     if (
       event.thread_ts &&
       (await isThreadActive(event.channel, event.thread_ts))
     ) {
       // does this look like a question?
-      if (!looksLikeQuestion(event.text)) {
-        logger.info(
-          `[${event.channel}] (${event.ts}) threaded ambient message from ${event.user} does not look like question. Ignoring.`,
-        );
-        return;
+      if (looksLikeQuestion(event.text)) {
+        return handleMention(event);
       }
-      return handleMention(event);
+
+      if (looksLikeChatter(event.text)) {
+        // handle chatter
+        postThreadReply(event.channel, event.ts, "namaste");
+      }
+      logger.info(
+        `[${event.channel}] (${event.ts}) threaded ambient message from ${event.user} does not look like question or chatter. Ignoring.`,
+      );
     }
 
     // non active thread - ignore (do not invite yourself to the conversation)

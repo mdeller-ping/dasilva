@@ -96,11 +96,11 @@ function looksLikeChatter(text) {
 
   const lowerText = text.toLowerCase().trim();
 
-  // Very short messages (1–3 words) that aren't questions
-  const wordCount = lowerText.split(/\s+/).length;
-  if (wordCount <= 3 && !lowerText.endsWith("?")) {
-    return true;
-  }
+  // // Very short messages (1–3 words) that aren't questions
+  // const wordCount = lowerText.split(/\s+/).length;
+  // if (wordCount <= 3 && !lowerText.endsWith("?")) {
+  //   return true;
+  // }
 
   // Common gratitude / acknowledgements
   const gratitudePatterns = [

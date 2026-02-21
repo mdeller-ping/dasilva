@@ -1,0 +1,56 @@
+services:
+  dasilva:
+    build: .
+    container_name: dasilva-bot
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      # Load from .env file
+      - PORT=${PORT:-3000}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GLOBAL_ADMINS=${GLOBAL_ADMINS}
+      - REDIS_URL=redis://redis:6379
+      - PERSISTENT_STORAGE=/app/data
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount persistent storage if configured
+      - ${PERSISTENT_STORAGE:-./data}:/app/data
+    networks:
+      - dasilva-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:${PORT:-3000}/', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: dasilva-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - dasilva-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  dasilva-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

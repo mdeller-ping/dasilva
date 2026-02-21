@@ -70,3 +70,11 @@ coverage/
 # Build outputs
 dist/
 build/
+
+# Docker
+docker-compose.override.yml
+*.dockerfile
+data/
+
+# Kubernetes — track manifests, but never commit real secret values
+k8s/secret.yaml

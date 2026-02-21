@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dasilva
+spec:
+  ingressClassName: nginx-public
+  rules:
+    - host: dasilva.ping-devops.com
+      http:
+        paths:
+          - path: /slack
+            pathType: Prefix
+            backend:
+              service:
+                name: dasilva
+                port:
+                  number: 80

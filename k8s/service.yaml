@@ -1,0 +1,17 @@
+# Exposes the bot within the cluster.
+# Slack requires a publicly reachable HTTPS endpoint — pair this with
+# an Ingress (or LoadBalancer) and a TLS certificate for your domain.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dasilva
+  labels:
+    app: dasilva
+spec:
+  selector:
+    app: dasilva
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+  type: ClusterIP

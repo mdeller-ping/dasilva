@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dasilva-config
+data:
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  REDIS_URL: "redis://dasilva-redis:6379"
+  PERSISTENT_STORAGE: "/app/data"
+  MODEL: "gpt-5.2"
+  FEEDBACK_EMOJI: "wave"
+  RESPONSE_COOLDOWN_SECONDS: "60"
+  ACTIVE_THREAD_TTL_SECONDS: "7200"
+  REDIS_KEY_PREFIX: "dasilva:"

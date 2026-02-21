@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dasilva
+  labels:
+    app: dasilva
+spec:
+  # Single-instance only — this app uses file-based preferences and
+  # in-process state that cannot be shared across replicas.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dasilva
+  template:
+    metadata:
+      labels:
+        app: dasilva
+    spec:
+      # fsGroup matches the nodejs GID (1001) defined in the Dockerfile.
+      # Kubernetes will chown mounted volumes to this group so the
+      # non-root container user can read and write /app/data.
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: dasilva
+          image: michaeldeller/dasilva:1.8.0
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: dasilva-config
+            - secretRef:
+                name: dasilva-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "1m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: dasilva-data

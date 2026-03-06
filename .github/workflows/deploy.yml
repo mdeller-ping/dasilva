@@ -1,0 +1,68 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run lint
+
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: lint
+    outputs:
+      image-tag: ${{ steps.meta.outputs.short-sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute short SHA
+        id: meta
+        run: echo "short-sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            michaeldeller/dasilva:${{ steps.meta.outputs.short-sha }}
+            michaeldeller/dasilva:latest
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update image
+        run: |
+          kubectl set image deployment/dasilva \
+            dasilva=michaeldeller/dasilva:${{ needs.build-push.outputs.image-tag }}
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/dasilva --timeout=120s

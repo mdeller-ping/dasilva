@@ -14,11 +14,21 @@ const openai = new OpenAI({
   maxRetries: OPENAI_MAX_RETRIES,
 });
 
-function callOpenAI(text, vectorId, threadHistory = []) {
-  const instructions = fs.readFileSync(
-    path.join(__dirname, "instructions.md"),
-    "utf-8",
+function loadInstructions() {
+  const storageBase = process.env.PERSISTENT_STORAGE || __dirname;
+  const fromStorage = path.join(storageBase, "instructions.md");
+  const fromBundle = path.join(__dirname, "instructions.md");
+
+  if (fs.existsSync(fromStorage)) return fs.readFileSync(fromStorage, "utf-8");
+  if (fs.existsSync(fromBundle)) return fs.readFileSync(fromBundle, "utf-8");
+
+  throw new Error(
+    `instructions.md not found. Place it at ${fromStorage} (persistent storage) or ${fromBundle} (bundled).`,
   );
+}
+
+function callOpenAI(text, vectorId, threadHistory = []) {
+  const instructions = loadInstructions();
   return openai.responses.create({
     model: MODEL,
     instructions,

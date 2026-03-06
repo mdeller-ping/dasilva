@@ -238,7 +238,7 @@ async function handleMention(event) {
       } else if (responseSummary.status === "completed") {
         logger.info(`[${channelId}] (${threadTs}) llm untrained response`);
         reasonText =
-          "Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel.";
+          `Sorry, I'm not able to answer that question. It may be outside the scope of what I've been trained on in this channel. If you have feedback, react with :${FEEDBACK_EMOJI}:.`;
       } else {
         logger.info(
           `[${channelId}] (${threadTs}) llm empty response with unexpected status`,
